@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.output/
+.vercel/
+.DS_Store
+*.local
+.env
+.env.*
+!.env.example
+package-lock.json
+screenshots/
+public/__grok/
+*.log
+.turbo/
