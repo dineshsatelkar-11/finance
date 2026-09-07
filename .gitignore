@@ -12,3 +12,4 @@ screenshots/
 public/__grok/
 *.log
 .turbo/
+.neon

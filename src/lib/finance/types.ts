@@ -2,7 +2,7 @@ export type PayMode = "upi" | "cash" | "bank";
 
 export type DriverKind = "full" | "part";
 
-export type PayoutKind = "salary" | "advance" | "extra_route" | "fine" | "return";
+export type PayoutKind = "salary" | "advance" | "extra_route" | "bonus" | "fine" | "return";
 
 export type PayoutStatus = "pending" | "paid" | "failed";
 
@@ -47,16 +47,13 @@ export type Loan = {
   bank: string;
   accountNo: string;
   ifsc: string;
-  /** Original sanctioned / disbursed principal. */
   principal: number;
   emiAmount: number;
-  /** Day of month EMI is due (1–28). */
   emiDay: number;
   totalEmis: number;
   startDate: string;
   endDate: string;
   interestRate: number;
-  /** Current outstanding (rupees owed). */
   outstanding: number;
   pendingEmis: number;
   status: LoanStatus;
@@ -91,6 +88,44 @@ export type Vendor = {
   upiPayeeName: string;
 };
 
+/** Customer who pays Satelkar’s for logistics service. */
+export type Customer = {
+  id: string;
+  name: string;
+  mobile: string;
+  note: string;
+};
+
+/** Money received from a customer (service collection). */
+export type Receipt = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+  date: string;
+  mode: PayMode;
+  status: PayoutStatus;
+  bankAccountId: string;
+  fleetId: string | null;
+  note: string;
+  createdAt: string;
+};
+
+/** Driver paying fleet rent to the company. */
+export type RentPayment = {
+  id: string;
+  fleetId: string;
+  driverId: string;
+  amount: number;
+  date: string;
+  /** Month this rent covers, YYYY-MM */
+  forMonth: string;
+  mode: PayMode;
+  status: PayoutStatus;
+  note: string;
+  createdAt: string;
+};
+
 export type Payout = {
   id: string;
   driverId: string;
@@ -115,10 +150,31 @@ export type Expense = {
   status: PayoutStatus;
   bankAccountId: string;
   upiVpa: string;
-  /** Optional: which fleet this expense belongs to. */
   fleetId: string | null;
   note: string;
   createdAt: string;
+};
+
+/** Leave days for a driver in a calendar month (affects salary). */
+export type Attendance = {
+  id: string;
+  driverId: string;
+  /** YYYY-MM */
+  month: string;
+  leaveDays: number;
+  note: string;
+};
+
+/** Rent not charged due to vehicle breakdown / off-road days. */
+export type RentWaiver = {
+  id: string;
+  fleetId: string;
+  /** YYYY-MM */
+  month: string;
+  breakdownDays: number;
+  /** If > 0, use this; else compute monthlyRent/30 * breakdownDays */
+  amount: number;
+  note: string;
 };
 
 export type FinanceState = {
@@ -129,6 +185,11 @@ export type FinanceState = {
   loanPayments: LoanPayment[];
   banks: BankAccount[];
   vendors: Vendor[];
+  customers: Customer[];
+  receipts: Receipt[];
+  rentPayments: RentPayment[];
+  attendances: Attendance[];
+  rentWaivers: RentWaiver[];
   payouts: Payout[];
   expenses: Expense[];
 };

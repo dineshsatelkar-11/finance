@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
   BankAccount,
+  Customer,
   Driver,
   Expense,
   Fleet,
@@ -12,6 +13,10 @@ import type {
   Payout,
   PayoutKind,
   PayoutStatus,
+  Receipt,
+  RentPayment,
+  RentWaiver,
+  Attendance,
   Vendor,
 } from "./types";
 import { monthISO, todayISO, uid } from "./format";
@@ -27,6 +32,11 @@ function seed(): {
   loanPayments: LoanPayment[];
   banks: BankAccount[];
   vendors: Vendor[];
+  customers: Customer[];
+  receipts: Receipt[];
+  rentPayments: RentPayment[];
+  attendances: Attendance[];
+  rentWaivers: RentWaiver[];
   payouts: Payout[];
   expenses: Expense[];
 } {
@@ -60,7 +70,7 @@ function seed(): {
     name: "Mini commercial",
     regNo: "MH-XX-XXXX",
     kind: "mini",
-    monthlyRent: 0,
+    monthlyRent: 5000,
     active: true,
     loanId: LOAN_ID,
     note: "WSB loan vehicle · A/c …000014",
@@ -217,6 +227,51 @@ function seed(): {
         upiPayeeName: "Warana Sahakari Bank",
       },
     ],
+    customers: [
+      {
+        id: "cus_ibcab",
+        name: "IBCAB client A",
+        mobile: "9876500001",
+        note: "Regular route",
+      },
+      {
+        id: "cus_kharadi",
+        name: "Kharadi store",
+        mobile: "9876500002",
+        note: "",
+      },
+    ],
+    receipts: [
+      {
+        id: "rc_sample",
+        customerId: "cus_ibcab",
+        customerName: "IBCAB client A",
+        amount: 12500,
+        date: day(2),
+        mode: "upi",
+        status: "paid",
+        bankAccountId: hdfc,
+        fleetId: FLEET_ID,
+        note: "Weekly settlement",
+        createdAt: `${day(2)}T16:00:00`,
+      },
+    ],
+    rentPayments: [
+      {
+        id: "rp_sample",
+        fleetId: FLEET_ID,
+        driverId: "drv_bharat",
+        amount: 5000,
+        date: day(1),
+        forMonth: month,
+        mode: "cash",
+        status: "paid",
+        note: "September rent",
+        createdAt: `${day(1)}T11:00:00`,
+      },
+    ],
+    attendances: [],
+    rentWaivers: [],
     payouts: [
       {
         id: "po_anand_sal",
@@ -340,6 +395,33 @@ type Actions = {
     note?: string;
   }) => { ok: true; id: string } | { ok: false; error: string };
   upsertVendor: (v: Vendor) => void;
+  upsertCustomer: (c: Customer) => void;
+  recordReceipt: (input: {
+    customerId: string;
+    amount: number;
+    date?: string;
+    mode: PayMode;
+    bankAccountId: string;
+    fleetId?: string | null;
+    note?: string;
+  }) => { ok: true; id: string } | { ok: false; error: string };
+  recordRent: (input: {
+    fleetId: string;
+    driverId: string;
+    amount: number;
+    date?: string;
+    forMonth?: string;
+    mode: PayMode;
+    note?: string;
+  }) => { ok: true; id: string } | { ok: false; error: string };
+  setAttendance: (driverId: string, month: string, leaveDays: number, note?: string) => void;
+  setRentWaiver: (
+    fleetId: string,
+    month: string,
+    breakdownDays: number,
+    amount?: number,
+    note?: string,
+  ) => void;
   resetDemo: () => void;
 };
 
@@ -352,6 +434,11 @@ export const useFinance = create<
     loanPayments: LoanPayment[];
     banks: BankAccount[];
     vendors: Vendor[];
+    customers: Customer[];
+    receipts: Receipt[];
+    rentPayments: RentPayment[];
+    attendances: Attendance[];
+    rentWaivers: RentWaiver[];
     payouts: Payout[];
     expenses: Expense[];
   } & Actions
@@ -546,9 +633,93 @@ export const useFinance = create<
           else next.push(v);
           return { vendors: next };
         }),
+      upsertCustomer: (c) =>
+        set((s) => {
+          const i = s.customers.findIndex((x) => x.id === c.id);
+          const next = [...s.customers];
+          if (i >= 0) next[i] = c;
+          else next.push(c);
+          return { customers: next };
+        }),
+      recordReceipt: (input) => {
+        if (!(input.amount > 0)) return { ok: false, error: "Amount must be greater than zero." };
+        const customer = get().customers.find((c) => c.id === input.customerId);
+        if (!customer) return { ok: false, error: "Select a customer." };
+        const id = uid("rc");
+        const row: Receipt = {
+          id,
+          customerId: customer.id,
+          customerName: customer.name,
+          amount: Math.round(input.amount * 100) / 100,
+          date: input.date || todayISO(),
+          mode: input.mode,
+          status: "paid",
+          bankAccountId: input.bankAccountId,
+          fleetId: input.fleetId ?? null,
+          note: input.note || "",
+          createdAt: new Date().toISOString(),
+        };
+        set((s) => ({ receipts: [row, ...s.receipts] }));
+        return { ok: true, id };
+      },
+      recordRent: (input) => {
+        if (!(input.amount > 0)) return { ok: false, error: "Amount must be greater than zero." };
+        const fleet = get().fleets.find((f) => f.id === input.fleetId);
+        const driver = get().drivers.find((d) => d.id === input.driverId);
+        if (!fleet) return { ok: false, error: "Select a fleet." };
+        if (!driver) return { ok: false, error: "Select a driver." };
+        const id = uid("rp");
+        const row: RentPayment = {
+          id,
+          fleetId: input.fleetId,
+          driverId: input.driverId,
+          amount: Math.round(input.amount * 100) / 100,
+          date: input.date || todayISO(),
+          forMonth: input.forMonth || get().month,
+          mode: input.mode,
+          status: "paid",
+          note: input.note || "",
+          createdAt: new Date().toISOString(),
+        };
+        set((s) => ({ rentPayments: [row, ...s.rentPayments] }));
+        return { ok: true, id };
+      },
+      setAttendance: (driverId, month, leaveDays, note) =>
+        set((s) => {
+          const days = Math.max(0, Math.min(31, Math.floor(leaveDays) || 0));
+          const i = s.attendances.findIndex((a) => a.driverId === driverId && a.month === month);
+          const row: Attendance = {
+            id: i >= 0 ? s.attendances[i]!.id : uid("att"),
+            driverId,
+            month,
+            leaveDays: days,
+            note: note || (i >= 0 ? s.attendances[i]!.note : ""),
+          };
+          const next = [...s.attendances];
+          if (i >= 0) next[i] = row;
+          else next.push(row);
+          return { attendances: next };
+        }),
+      setRentWaiver: (fleetId, month, breakdownDays, amount, note) =>
+        set((s) => {
+          const days = Math.max(0, Math.min(31, Math.floor(breakdownDays) || 0));
+          const i = s.rentWaivers.findIndex((w) => w.fleetId === fleetId && w.month === month);
+          const row: RentWaiver = {
+            id: i >= 0 ? s.rentWaivers[i]!.id : uid("rw"),
+            fleetId,
+            month,
+            breakdownDays: days,
+            amount: Math.max(0, amount || 0),
+            note: note || (i >= 0 ? s.rentWaivers[i]!.note : ""),
+          };
+          const next = [...s.rentWaivers];
+          if (i >= 0) next[i] = row;
+          else next.push(row);
+          return { rentWaivers: next };
+        }),
       resetDemo: () => set({ month: monthISO(), ...seed() }),
     }),
-    { name: "satelkar-finance-v3", skipHydration: true },
+    { name: "satelkar-finance-v5", skipHydration: true },
   ),
 );
 

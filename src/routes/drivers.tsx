@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { DriverForm } from "@/components/finance/driver-form";
 import { PaySheet } from "@/components/finance/pay-sheet";
 import { useFinance } from "@/lib/finance/store";
-import { inr, initials } from "@/lib/finance/format";
+import { inr, initials, suggestedSalary, WORKING_DAYS } from "@/lib/finance/format";
 import { maskVpa } from "@/lib/finance/upi";
 import type { Driver } from "@/lib/finance/types";
 
@@ -15,6 +15,9 @@ export const Route = createFileRoute("/drivers")({ component: DriversPage });
 
 function DriversPage() {
   const drivers = useFinance((s) => s.drivers);
+  const month = useFinance((s) => s.month);
+  const attendances = useFinance((s) => s.attendances);
+  const setAttendance = useFinance((s) => s.setAttendance);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Driver | null>(null);
   const [payOpen, setPayOpen] = useState(false);
@@ -58,6 +61,31 @@ function DriversPage() {
                 <p className="mt-1 font-mono text-[12px] text-ink">
                   {d.upiVpa ? maskVpa(d.upiVpa) : "No UPI ID — payouts will ask you to add one"}
                 </p>
+                {(() => {
+                  const att = attendances.find((a) => a.driverId === d.id && a.month === month);
+                  const leaves = att?.leaveDays || 0;
+                  const pay = suggestedSalary(d, leaves);
+                  return (
+                    <p className="mt-1 text-[12px] text-muted">
+                      Leave {leaves}d · this month pay ≈ {inr(pay)}
+                      <button
+                        type="button"
+                        className="ml-2 text-accent underline-offset-2 hover:underline"
+                        onClick={() => {
+                          const raw = window.prompt(
+                            `Leave days for ${d.name} (${month})`,
+                            String(leaves),
+                          );
+                          if (raw == null) return;
+                          const n = Math.max(0, Math.min(31, Math.floor(parseFloat(raw) || 0)));
+                          setAttendance(d.id, month, n);
+                        }}
+                      >
+                        Edit leave
+                      </button>
+                    </p>
+                  );
+                })()}
               </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2">

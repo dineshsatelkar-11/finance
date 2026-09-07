@@ -16,6 +16,8 @@ import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as PayoutsRouteImport } from './routes/payouts'
 import { Route as FleetsRouteImport } from './routes/fleets'
 import { Route as LoansRouteImport } from './routes/loans'
+import { Route as ReceiptsRouteImport } from './routes/receipts'
+import { Route as RentRouteImport } from './routes/rent'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,6 +54,16 @@ const LoansRoute = LoansRouteImport.update({
   path: '/loans',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReceiptsRoute = ReceiptsRouteImport.update({
+  id: '/receipts',
+  path: '/receipts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RentRoute = RentRouteImport.update({
+  id: '/rent',
+  path: '/rent',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -61,6 +73,8 @@ export interface FileRoutesByFullPath {
   '/payouts': typeof PayoutsRoute
   '/fleets': typeof FleetsRoute
   '/loans': typeof LoansRoute
+  '/receipts': typeof ReceiptsRoute
+  '/rent': typeof RentRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -70,6 +84,8 @@ export interface FileRoutesByTo {
   '/payouts': typeof PayoutsRoute
   '/fleets': typeof FleetsRoute
   '/loans': typeof LoansRoute
+  '/receipts': typeof ReceiptsRoute
+  '/rent': typeof RentRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -83,7 +99,7 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/bank' | '/drivers' | '/expenses' | '/payouts' | '/fleets' | '/loans'
+  fullPaths: '/' | '/bank' | '/drivers' | '/expenses' | '/payouts' | '/fleets' | '/loans' | '/receipts' | '/rent' | '/bank' | '/drivers' | '/expenses' | '/payouts' | '/fleets' | '/loans'
   fileRoutesByTo: FileRoutesByTo
   to: '/' | '/bank' | '/drivers' | '/expenses' | '/payouts' | '/fleets' | '/loans'
   id: '__root__' | '/' | '/bank' | '/drivers' | '/expenses' | '/payouts' | '/fleets' | '/loans'
@@ -97,6 +113,8 @@ export interface RootRouteChildren {
   PayoutsRoute: typeof PayoutsRoute
   FleetsRoute: typeof FleetsRoute
   LoansRoute: typeof LoansRoute
+  ReceiptsRoute: typeof ReceiptsRoute
+  RentRoute: typeof RentRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -161,6 +179,8 @@ const rootRouteChildren: RootRouteChildren = {
   PayoutsRoute: PayoutsRoute,
   FleetsRoute: FleetsRoute,
   LoansRoute: LoansRoute,
+  ReceiptsRoute: ReceiptsRoute,
+  RentRoute: RentRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

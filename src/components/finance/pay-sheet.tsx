@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Copy, ShieldAlert, Smartphone } from "lucide-react";
+import { Copy, MessageCircle, ShieldAlert, Smartphone } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { UpiField } from "@/components/finance/upi-field";
 import { defaultBankId, useFinance } from "@/lib/finance/store";
-import { inr, todayISO } from "@/lib/finance/format";
+import { inr, openWhatsApp, suggestedSalary, todayISO, WORKING_DAYS } from "@/lib/finance/format";
 import type { PayMode, PayoutKind } from "@/lib/finance/types";
 import {
   buildUpiIntent,
@@ -23,6 +23,7 @@ import {
 
 const KINDS: { id: PayoutKind; label: string }[] = [
   { id: "salary", label: "Salary" },
+  { id: "bonus", label: "Bonus" },
   { id: "advance", label: "Advance" },
   { id: "extra_route", label: "Extra route" },
   { id: "return", label: "Return" },
@@ -39,6 +40,9 @@ export function PaySheet({
   driverId: string | null;
 }) {
   const drivers = useFinance((s) => s.drivers);
+  const month = useFinance((s) => s.month);
+  const attendances = useFinance((s) => s.attendances);
+  const setAttendance = useFinance((s) => s.setAttendance);
   const banks = useFinance((s) => s.banks);
   const setDriverUpi = useFinance((s) => s.setDriverUpi);
   const recordPayout = useFinance((s) => s.recordPayout);
@@ -46,6 +50,7 @@ export function PaySheet({
 
   const [id, setId] = useState("");
   const [kind, setKind] = useState<PayoutKind>("salary");
+  const [leaveDays, setLeaveDays] = useState("0");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayISO());
   const [mode, setMode] = useState<PayMode>("upi");
@@ -60,24 +65,30 @@ export function PaySheet({
 
   useEffect(() => {
     if (!open) return;
-    const list = useFinance.getState().drivers;
+    const st = useFinance.getState();
+    const list = st.drivers;
     const d = list.find((x) => x.id === driverId) || list.find((x) => x.active) || list[0];
+    const att = st.attendances.find((a) => a.driverId === d?.id && a.month === st.month);
+    const leaves = att?.leaveDays ?? 0;
     setId(d?.id || "");
     setKind("salary");
-    setAmount(d?.kind === "full" && d.baseSalary ? String(d.baseSalary) : "");
+    setLeaveDays(String(leaves));
+    setAmount(d ? String(suggestedSalary(d, leaves)) : "");
     setDate(todayISO());
     setMode("upi");
     setBankId(defaultBankId());
     setUpi(d?.upiVpa || "");
     setPayee(d?.upiPayeeName || d?.name || "");
     setSaveUpi(true);
-    setNote("");
+    setNote(leaves > 0 ? `Leave ${leaves} day(s) · pro-rata` : "");
     setStep("form");
     setPendingId(null);
     setRevealed(false);
   }, [open, driverId]);
 
   const driver = drivers.find((d) => d.id === id);
+  const leaveN = Math.max(0, Math.floor(parseFloat(leaveDays) || 0));
+  const salaryHint = driver ? suggestedSalary(driver, leaveN) : 0;
 
   const vpa = useMemo(() => {
     const p = parseUpiPayload(upi);
@@ -152,7 +163,22 @@ export function PaySheet({
   function markPaid() {
     if (pendingId) setPayoutStatus(pendingId, "paid");
     toast.success("Payout recorded as paid.");
-    onOpenChange(false);
+  }
+
+  function sharePaidWa() {
+    if (!driver) return;
+    const kindLabel = KINDS.find((k) => k.id === kind)?.label || kind;
+    const text = [
+      `Satelkar's Logistics — payment`,
+      ``,
+      `Driver: ${driver.name}`,
+      `Type: ${kindLabel}`,
+      `Amount: ${inr(parseFloat(amount) || 0)}`,
+      `Mode: ${mode.toUpperCase()}`,
+      ``,
+      `Payment confirmed.`,
+    ].join("\n");
+    openWhatsApp(driver.mobile || "", text);
   }
 
   function markFailed() {
@@ -172,10 +198,13 @@ export function PaySheet({
                 value={id}
                 onValueChange={(next) => {
                   const d = drivers.find((x) => x.id === next);
+                  const att = attendances.find((a) => a.driverId === next && a.month === month);
+                  const leaves = att?.leaveDays ?? 0;
                   setId(next);
                   setUpi(d?.upiVpa || "");
                   setPayee(d?.upiPayeeName || d?.name || "");
-                  if (d?.kind === "full" && d.baseSalary) setAmount(String(d.baseSalary));
+                  setLeaveDays(String(leaves));
+                  if (d) setAmount(String(suggestedSalary(d, leaves)));
                 }}
               >
                 <SelectTrigger>
@@ -221,6 +250,64 @@ export function PaySheet({
                 />
               </div>
             </div>
+
+            {kind === "salary" || kind === "bonus" ? (
+              <div className="rounded-lg border border-line bg-canvas/60 p-3 space-y-3">
+                {kind === "salary" ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="pay-leave">Leave days (this month)</Label>
+                        <Input
+                          id="pay-leave"
+                          inputMode="numeric"
+                          className="tabular-nums"
+                          value={leaveDays}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setLeaveDays(v);
+                            const n = Math.max(0, Math.floor(parseFloat(v) || 0));
+                            if (driver) {
+                              setAmount(String(suggestedSalary(driver, n)));
+                              setAttendance(driver.id, month, n);
+                              setNote(n > 0 ? `Leave ${n} day(s) · pro-rata on ${WORKING_DAYS} days` : "");
+                            }
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Suggested salary</Label>
+                        <div className="flex h-11 items-center font-medium tabular-nums text-ink">
+                          {inr(salaryHint)}
+                        </div>
+                        <p className="text-[11px] text-muted">
+                          {driver?.kind === "part"
+                            ? `Daily ${inr(driver.dailyRate)} × (${WORKING_DAYS} − leave)`
+                            : `Base ${inr(driver?.baseSalary || 0)} × present/${WORKING_DAYS}`}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (!driver) return;
+                        setAmount(String(salaryHint));
+                        setAttendance(driver.id, month, leaveN);
+                        toast.message("Amount set from leave days");
+                      }}
+                    >
+                      Use suggested amount
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-[13px] text-muted">
+                    Bonus is separate from salary — enter the amount to pay.
+                  </p>
+                )}
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -372,6 +459,16 @@ export function PaySheet({
               </Button>
               <Button onClick={markPaid}>Mark paid</Button>
             </div>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                markPaid();
+                sharePaidWa();
+              }}
+            >
+              <MessageCircle className="size-4" /> Mark paid + WhatsApp
+            </Button>
           </div>
         )}
       </DialogContent>
