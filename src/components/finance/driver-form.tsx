@@ -67,6 +67,7 @@ export function DriverForm({
       upiVpa: vpa,
       upiPayeeName: (payee || n).trim(),
       upiUpdatedAt: vpa ? new Date().toISOString() : null,
+      fleetId: driver?.fleetId ?? null,
       note: note.trim(),
     };
     upsert(row);

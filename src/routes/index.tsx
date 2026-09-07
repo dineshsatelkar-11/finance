@@ -17,6 +17,8 @@ function Overview() {
   const payouts = useFinance((s) => s.payouts);
   const expenses = useFinance((s) => s.expenses);
   const banks = useFinance((s) => s.banks);
+  const loans = useFinance((s) => s.loans);
+  const loanPayments = useFinance((s) => s.loanPayments);
 
   const monthPayouts = payouts.filter((p) => p.date.startsWith(month));
   const monthExp = expenses.filter((e) => e.date.startsWith(month));
@@ -33,11 +35,17 @@ function Overview() {
   const pendingPay = monthPayouts.filter((p) => p.status === "pending");
   const pendingAmt = pendingPay.reduce((s, p) => s + p.amount, 0);
   const missingUpi = drivers.filter((d) => d.active && !d.upiVpa);
+  const activeLoans = loans.filter((l) => l.status === "active");
+  const loanOut = activeLoans.reduce((s, l) => s + l.outstanding, 0);
+  const pendingEmi = loanPayments.filter(
+    (p) => p.kind === "emi" && p.status === "pending" && p.date.startsWith(month),
+  );
+  const pendingEmiAmt = pendingEmi.reduce((s, p) => s + p.amount, 0);
   const bankCash = banks.reduce((s, b) => s + b.opening, 0) - salaryPaid - advances - extra - expPaid;
 
   const stats = [
     { label: "Cash position", value: inr(bankCash), hint: "Opening less paid out" },
-    { label: "Salary paid", value: inr(salaryPaid), hint: "This month" },
+    { label: "Loan outstanding", value: inr(loanOut), hint: `${activeLoans.length} active loan(s)` },
     { label: "Expenses", value: inr(expPaid), hint: "Fuel, packaging, other" },
     { label: "Held payouts", value: inr(pendingAmt), hint: `${pendingPay.length} awaiting confirm` },
   ];
@@ -71,6 +79,25 @@ function Overview() {
           </Card>
         ))}
       </div>
+
+      {pendingEmi.length > 0 ? (
+        <div className="flex gap-3 rounded-lg border border-warn/25 bg-warn-soft px-4 py-3">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warn" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-warn">
+              EMI due this month — {inr(pendingEmiAmt)}
+            </div>
+            <p className="mt-1 text-[13px] text-warn/90">
+              {pendingEmi.length} installment(s) queued. Confirm after bank debit to reduce outstanding.
+            </p>
+            <Button asChild variant="outline" size="sm" className="mt-3 border-warn/30 bg-panel">
+              <Link to="/loans">
+                Open loans <ArrowUpRight className="size-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {missingUpi.length > 0 ? (
         <div className="flex gap-3 rounded-lg border border-warn/25 bg-warn-soft px-4 py-3">
