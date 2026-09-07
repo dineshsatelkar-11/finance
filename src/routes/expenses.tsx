@@ -27,12 +27,12 @@ function ExpensesPage() {
   const expenses = useFinance((s) => s.expenses);
   const vendors = useFinance((s) => s.vendors);
   const fleets = useFinance((s) => s.fleets);
-  const banks = useFinance((s) => s.banks);
   const record = useFinance((s) => s.recordExpense);
   const upsertVendor = useFinance((s) => s.upsertVendor);
 
   const [cat, setCat] = useState("Fuel");
-  const [vendorId, setVendorId] = useState(vendors[0]?.id || "");
+  const [vendorId, setVendorId] = useState("none");
+  const [vendorFree, setVendorFree] = useState("");
   const [fleetId, setFleetId] = useState<string>("none");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayISO());
@@ -44,7 +44,7 @@ function ExpensesPage() {
     [expenses, month],
   );
   const total = rows.filter((e) => e.status === "paid").reduce((s, e) => s + e.amount, 0);
-  const v = vendors.find((x) => x.id === vendorId);
+  const v = vendorId !== "none" ? vendors.find((x) => x.id === vendorId) : undefined;
 
   const fleetTotals = useMemo(() => {
     const map = new Map<string, number>();
@@ -60,9 +60,10 @@ function ExpensesPage() {
 
   function save() {
     const amt = parseFloat(amount);
+    const vendorName = v?.name || vendorFree.trim() || "General";
     const r = record({
       category: cat,
-      vendor: v?.name || "Unknown",
+      vendor: vendorName,
       amount: amt,
       date,
       mode,
@@ -82,6 +83,7 @@ function ExpensesPage() {
     );
     setAmount("");
     setNote("");
+    setVendorFree("");
   }
 
   return (
@@ -89,7 +91,7 @@ function ExpensesPage() {
       <div>
         <h1 className="font-display text-3xl font-medium tracking-tight">Expenses</h1>
         <p className="mt-1 text-sm text-muted">
-          This month {inr(total)}. Pick vendor → UPI fills automatically. Tag fleet to see cost per vehicle.
+          This month {inr(total)}. Vendor is optional — pick one to auto-fill UPI, or leave blank.
         </p>
       </div>
 
@@ -125,12 +127,19 @@ function ExpensesPage() {
             </Select>
           </div>
           <div>
-            <Label>Vendor</Label>
-            <Select value={vendorId} onValueChange={setVendorId}>
+            <Label>Vendor (optional)</Label>
+            <Select
+              value={vendorId}
+              onValueChange={(id) => {
+                setVendorId(id);
+                if (id !== "none") setVendorFree("");
+              }}
+            >
               <SelectTrigger>
-                <SelectValue placeholder="Select vendor" />
+                <SelectValue placeholder="No vendor" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">No vendor / general</SelectItem>
                 {vendors.map((x) => (
                   <SelectItem key={x.id} value={x.id}>
                     {x.name}
@@ -141,6 +150,14 @@ function ExpensesPage() {
             </Select>
             {v?.upiVpa ? (
               <p className="mt-1 font-mono text-[12px] text-muted">Pays to {v.upiVpa}</p>
+            ) : vendorId === "none" ? (
+              <div className="mt-2">
+                <Input
+                  placeholder="Or type vendor name (optional)"
+                  value={vendorFree}
+                  onChange={(e) => setVendorFree(e.target.value)}
+                />
+              </div>
             ) : (
               <p className="mt-1 text-[12px] text-warn">No UPI on this vendor — add below</p>
             )}
@@ -203,7 +220,7 @@ function ExpensesPage() {
 
       <Card>
         <h2 className="font-display text-lg font-medium">Vendors</h2>
-        <p className="mt-1 text-sm text-muted">Select vendor above to auto-fill UPI when you pay.</p>
+        <p className="mt-1 text-sm text-muted">Select a vendor above to auto-fill UPI when you pay.</p>
         <ul className="mt-3 divide-y divide-line">
           {vendors.map((x) => (
             <li key={x.id} className="flex items-center justify-between py-3 text-sm">
