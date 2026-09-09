@@ -1,34 +1,32 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Wallet } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DriverForm } from "@/components/finance/driver-form";
-import { PaySheet } from "@/components/finance/pay-sheet";
 import { useFinance } from "@/lib/finance/store";
-import { inr, initials, suggestedSalary, WORKING_DAYS } from "@/lib/finance/format";
-import { maskVpa } from "@/lib/finance/upi";
+import { inr, maskVpa, suggestedSalary } from "@/lib/finance/format";
 import type { Driver } from "@/lib/finance/types";
 
 export const Route = createFileRoute("/drivers")({ component: DriversPage });
 
 function DriversPage() {
   const drivers = useFinance((s) => s.drivers);
-  const month = useFinance((s) => s.month);
   const attendances = useFinance((s) => s.attendances);
+  const month = useFinance((s) => s.month);
   const setAttendance = useFinance((s) => s.setAttendance);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Driver | null>(null);
-  const [payOpen, setPayOpen] = useState(false);
-  const [payId, setPayId] = useState<string | null>(null);
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-medium tracking-tight">Drivers</h1>
-          <p className="mt-1 text-sm text-muted">UPI IDs live on the driver — they survive reloads and other phones on this desk.</p>
+          <p className="mt-1 text-sm text-muted">
+            Keep UPI on the driver record. Opening balance tracks what the company already owes (or is owed).
+          </p>
         </div>
         <Button
           onClick={() => {
@@ -36,18 +34,15 @@ function DriversPage() {
             setFormOpen(true);
           }}
         >
-          <Plus /> Add
+          <Plus className="size-4" /> Add
         </Button>
       </div>
 
-      <div className="grid gap-3">
+      <div className="space-y-3">
         {drivers.map((d) => (
           <Card key={d.id} className="p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex size-11 items-center justify-center rounded-md bg-navy text-sm font-medium text-navy-fg">
-                {initials(d.name)}
-              </div>
-              <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="font-medium">{d.name}</h2>
                   <Badge tone="muted">{d.kind === "full" ? "Full-time" : "Part-time"}</Badge>
@@ -56,6 +51,7 @@ function DriversPage() {
                 </div>
                 <p className="mt-1 text-[13px] text-muted">
                   {d.kind === "full" ? `Salary ${inr(d.baseSalary)}` : `Daily ${inr(d.dailyRate)}`}
+                  {d.openingBalance ? ` · Open ${inr(d.openingBalance)}` : ""}
                   {d.mobile ? ` · ${d.mobile}` : ""}
                 </p>
                 <p className="mt-1 font-mono text-[12px] text-ink">
@@ -98,21 +94,12 @@ function DriversPage() {
               >
                 {d.upiVpa ? "Edit / change UPI" : "Add UPI ID"}
               </Button>
-              <Button
-                onClick={() => {
-                  setPayId(d.id);
-                  setPayOpen(true);
-                }}
-              >
-                <Wallet /> Pay
-              </Button>
             </div>
           </Card>
         ))}
       </div>
 
       <DriverForm open={formOpen} onOpenChange={setFormOpen} driver={editing} />
-      <PaySheet open={payOpen} onOpenChange={setPayOpen} driverId={payId} />
     </div>
   );
 }

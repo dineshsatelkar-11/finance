@@ -25,6 +25,7 @@ export function DriverForm({
   const [kind, setKind] = useState<DriverKind>("full");
   const [base, setBase] = useState("");
   const [daily, setDaily] = useState("");
+  const [opening, setOpening] = useState("");
   const [upi, setUpi] = useState("");
   const [payee, setPayee] = useState("");
   const [note, setNote] = useState("");
@@ -36,6 +37,11 @@ export function DriverForm({
     setKind(driver?.kind || "full");
     setBase(driver?.baseSalary ? String(driver.baseSalary) : "");
     setDaily(driver?.dailyRate ? String(driver.dailyRate) : "");
+    setOpening(
+      driver?.openingBalance != null && driver.openingBalance !== 0
+        ? String(driver.openingBalance)
+        : "",
+    );
     setUpi(driver?.upiVpa || "");
     setPayee(driver?.upiPayeeName || driver?.name || "");
     setNote(driver?.note || "");
@@ -63,6 +69,7 @@ export function DriverForm({
       kind,
       baseSalary: kind === "full" ? parseFloat(base) || 0 : 0,
       dailyRate: kind === "part" ? parseFloat(daily) || 0 : 0,
+      openingBalance: parseFloat(opening) || 0,
       active: driver?.active ?? true,
       upiVpa: vpa,
       upiPayeeName: (payee || n).trim(),
@@ -78,46 +85,25 @@ export function DriverForm({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title={driver ? "Edit driver" : "Add driver"}>
-        <div className="grid gap-4 text-left">
-          <div className="grid gap-1.5">
-            <Label htmlFor="drv-name" className="mb-0 text-left">
-              Name
-            </Label>
-            <Input
-              id="drv-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="text-left"
-              autoComplete="name"
-            />
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="drv-name">Name</Label>
+            <Input id="drv-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="drv-mob" className="mb-0 text-left">
-              Mobile
-            </Label>
-            <Input
-              id="drv-mob"
-              inputMode="numeric"
-              value={mobile}
-              onChange={(e) => setMobile(e.target.value)}
-              className="text-left"
-              autoComplete="tel"
-            />
+          <div>
+            <Label htmlFor="drv-mob">Mobile</Label>
+            <Input id="drv-mob" inputMode="numeric" value={mobile} onChange={(e) => setMobile(e.target.value)} />
           </div>
-
-          <div className="grid gap-1.5">
-            <Label className="mb-0 text-left">Type</Label>
-            <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label>Type</Label>
+            <div className="flex gap-2">
               {(["full", "part"] as const).map((k) => (
                 <button
                   key={k}
                   type="button"
                   onClick={() => setKind(k)}
-                  className={`h-11 rounded-md border text-sm font-medium transition-colors ${
-                    kind === k
-                      ? "border-accent bg-accent-soft text-accent"
-                      : "border-line bg-raised text-muted hover:bg-accent-soft/60"
+                  className={`h-10 flex-1 rounded-md border text-sm font-medium ${
+                    kind === k ? "border-accent bg-accent-soft text-accent" : "border-line bg-raised text-muted"
                   }`}
                 >
                   {k === "full" ? "Full-time" : "Part-time"}
@@ -125,52 +111,39 @@ export function DriverForm({
               ))}
             </div>
           </div>
-
           {kind === "full" ? (
-            <div className="grid gap-1.5">
-              <Label htmlFor="drv-sal" className="mb-0 text-left">
-                Base salary (₹)
-              </Label>
-              <Input
-                id="drv-sal"
-                inputMode="decimal"
-                className="text-left tabular-nums"
-                value={base}
-                onChange={(e) => setBase(e.target.value)}
-              />
+            <div>
+              <Label htmlFor="drv-sal">Base salary (₹)</Label>
+              <Input id="drv-sal" inputMode="decimal" className="tabular-nums" value={base} onChange={(e) => setBase(e.target.value)} />
             </div>
           ) : (
-            <div className="grid gap-1.5">
-              <Label htmlFor="drv-day" className="mb-0 text-left">
-                Daily rate (₹)
-              </Label>
-              <Input
-                id="drv-day"
-                inputMode="decimal"
-                className="text-left tabular-nums"
-                value={daily}
-                onChange={(e) => setDaily(e.target.value)}
-              />
+            <div>
+              <Label htmlFor="drv-day">Daily rate (₹)</Label>
+              <Input id="drv-day" inputMode="decimal" className="tabular-nums" value={daily} onChange={(e) => setDaily(e.target.value)} />
             </div>
           )}
-
-          <div className="rounded-lg border border-line bg-accent-soft/40 p-3 text-left">
+          <div>
+            <Label htmlFor="drv-open">Opening balance (₹)</Label>
+            <Input
+              id="drv-open"
+              inputMode="decimal"
+              className="tabular-nums"
+              placeholder="0"
+              value={opening}
+              onChange={(e) => setOpening(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-muted">
+              Positive = company owes driver · negative = driver owes company
+            </p>
+          </div>
+          <div className="rounded-lg border border-line bg-accent-soft/50 p-4">
             <UpiField id="drv-upi" value={upi} onChange={setUpi} payeeName={payee} onPayeeName={setPayee} />
           </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="drv-note" className="mb-0 text-left">
-              Note
-            </Label>
-            <Input
-              id="drv-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="text-left"
-            />
+          <div>
+            <Label htmlFor="drv-note">Note</Label>
+            <Input id="drv-note" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
-
-          <Button className="mt-1 w-full" onClick={save}>
+          <Button className="w-full" onClick={save}>
             Save driver
           </Button>
         </div>
