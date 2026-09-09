@@ -26,6 +26,8 @@ export function DriverForm({
   const [base, setBase] = useState("");
   const [daily, setDaily] = useState("");
   const [opening, setOpening] = useState("");
+  /** true = company owes driver (+); false = driver owes company (-) */
+  const [openingPositive, setOpeningPositive] = useState(true);
   const [upi, setUpi] = useState("");
   const [payee, setPayee] = useState("");
   const [note, setNote] = useState("");
@@ -37,11 +39,9 @@ export function DriverForm({
     setKind(driver?.kind || "full");
     setBase(driver?.baseSalary ? String(driver.baseSalary) : "");
     setDaily(driver?.dailyRate ? String(driver.dailyRate) : "");
-    setOpening(
-      driver?.openingBalance != null && driver.openingBalance !== 0
-        ? String(driver.openingBalance)
-        : "",
-    );
+    const ob = driver?.openingBalance ?? 0;
+    setOpeningPositive(ob >= 0);
+    setOpening(ob !== 0 ? String(Math.abs(ob)) : "");
     setUpi(driver?.upiVpa || "");
     setPayee(driver?.upiPayeeName || driver?.name || "");
     setNote(driver?.note || "");
@@ -69,7 +69,7 @@ export function DriverForm({
       kind,
       baseSalary: kind === "full" ? parseFloat(base) || 0 : 0,
       dailyRate: kind === "part" ? parseFloat(daily) || 0 : 0,
-      openingBalance: parseFloat(opening) || 0,
+      openingBalance: (parseFloat(opening) || 0) * (openingPositive ? 1 : -1),
       active: driver?.active ?? true,
       upiVpa: vpa,
       upiPayeeName: (payee || n).trim(),
@@ -124,16 +124,42 @@ export function DriverForm({
           )}
           <div>
             <Label htmlFor="drv-open">Opening balance (₹)</Label>
-            <Input
-              id="drv-open"
-              inputMode="decimal"
-              className="tabular-nums"
-              placeholder="0"
-              value={opening}
-              onChange={(e) => setOpening(e.target.value)}
-            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setOpeningPositive(true)}
+                className={`h-10 shrink-0 rounded-md border px-3 text-[12px] font-medium ${
+                  openingPositive
+                    ? "border-accent bg-accent-soft text-accent"
+                    : "border-line bg-raised text-muted"
+                }`}
+              >
+                We owe
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpeningPositive(false)}
+                className={`h-10 shrink-0 rounded-md border px-3 text-[12px] font-medium ${
+                  !openingPositive
+                    ? "border-warn bg-warn-soft text-warn"
+                    : "border-line bg-raised text-muted"
+                }`}
+              >
+                They owe
+              </button>
+              <Input
+                id="drv-open"
+                inputMode="decimal"
+                className="tabular-nums"
+                placeholder="0"
+                value={opening}
+                onChange={(e) => setOpening(e.target.value.replace(/[^0-9.]/g, ""))}
+              />
+            </div>
             <p className="mt-1 text-[11px] text-muted">
-              Positive = company owes driver · negative = driver owes company
+              {openingPositive
+                ? "Company owes this driver (advance already with them / balance due)"
+                : "Driver owes the company (recovery / overpayment)"}
             </p>
           </div>
           <div className="rounded-lg border border-line bg-accent-soft/50 p-4">
