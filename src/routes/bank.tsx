@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useFinance } from "@/lib/finance/store";
+import { clearAllFinanceData } from "@/lib/finance/sync";
 import { inr, shortDate, uid } from "@/lib/finance/format";
 import type { BankAccount } from "@/lib/finance/types";
 
@@ -20,7 +21,7 @@ function BankPage() {
   const drivers = useFinance((s) => s.drivers);
   const upsertBank = useFinance((s) => s.upsertBank);
   const setDefaultBank = useFinance((s) => s.setDefaultBank);
-  const resetDemo = useFinance((s) => s.resetDemo);
+  const [clearing, setClearing] = useState(false);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<BankAccount | null>(null);
@@ -205,8 +206,24 @@ function BankPage() {
         </ul>
       </Card>
 
-      <Button variant="outline" onClick={() => resetDemo()}>
-        Reset demo data
+      <Button
+        variant="outline"
+        disabled={clearing}
+        onClick={async () => {
+          if (!window.confirm("Clear ALL data from the app and Neon database? This cannot be undone.")) {
+            return;
+          }
+          setClearing(true);
+          const res = await clearAllFinanceData();
+          setClearing(false);
+          if (!res.ok) {
+            window.alert(res.error || "Clear failed");
+            return;
+          }
+          window.alert("All data cleared.");
+        }}
+      >
+        {clearing ? "Clearing…" : "Clear all data"}
       </Button>
     </div>
   );
