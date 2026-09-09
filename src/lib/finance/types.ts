@@ -193,3 +193,6 @@ export type FinanceState = {
   payouts: Payout[];
   expenses: Expense[];
 };
+
+/** Full business data without UI month selector — used for Neon load/save. */
+export type FinanceSnapshot = Omit<FinanceState, "month">;
