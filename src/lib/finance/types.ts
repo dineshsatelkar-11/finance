@@ -19,6 +19,11 @@ export type Driver = {
   kind: DriverKind;
   baseSalary: number;
   dailyRate: number;
+  /**
+   * Opening balance for this driver (₹).
+   * Positive = company owes driver; negative = driver owes company.
+   */
+  openingBalance: number;
   active: boolean;
   /** Canonical VPA stored on the driver — never only in a side map keyed by name. */
   upiVpa: string;
