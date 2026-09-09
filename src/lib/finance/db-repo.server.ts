@@ -285,11 +285,9 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
   };
 }
 
-/** Replace all finance rows with the given snapshot (transactional). */
-export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> {
+/** Delete every finance row (FK-safe order). Leaves schema intact. */
+export async function clearFinanceTables(): Promise<void> {
   const sql = await getSql();
-
-  // Clear in FK-safe order
   await sql.query(`delete from attendances`);
   await sql.query(`delete from rent_waivers`);
   await sql.query(`delete from loan_payments`);
@@ -303,6 +301,12 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
   await sql.query(`delete from fleets`);
   await sql.query(`delete from loans`);
   await sql.query(`delete from banks`);
+}
+
+/** Replace all finance rows with the given snapshot (transactional). */
+export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> {
+  await clearFinanceTables();
+  const sql = await getSql();
 
   for (const b of snap.banks) {
     await sql.query(
