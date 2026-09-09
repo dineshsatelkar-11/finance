@@ -23,8 +23,12 @@ function LoansPage() {
   const loan = loans.find((l) => l.id === selected) || loans[0];
 
   useEffect(() => {
-    for (const l of loans) {
-      if (l.status === "active") ensureMonthlyEmi(l.id);
+    try {
+      for (const l of loans) {
+        if (l.status === "active") ensureMonthlyEmi(l.id);
+      }
+    } catch (e) {
+      console.error("ensureMonthlyEmi failed", e);
     }
   }, [loans, month, ensureMonthlyEmi]);
 
