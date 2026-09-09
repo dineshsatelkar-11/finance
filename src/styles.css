@@ -38,32 +38,93 @@
 }
 
 @layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: clip;
+    max-width: 100%;
   }
+
   html,
   body,
   #app {
     min-height: 100%;
+    min-height: 100dvh;
     background: var(--color-canvas);
     color: var(--color-ink);
+    max-width: 100%;
   }
+
   body {
     font-family: var(--font-sans);
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
+
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+
   h1,
   h2,
   h3 {
     text-wrap: balance;
     font-family: var(--font-display);
   }
+
   p {
     text-wrap: pretty;
   }
+
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+    font-size: 16px;
+  }
+
+  input[type="month"],
+  input[type="date"] {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@layer utilities {
+  .safe-px {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .page-title {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
+  @media (min-width: 640px) {
+    .page-title {
+      font-size: 1.875rem;
+    }
   }
 }
 
