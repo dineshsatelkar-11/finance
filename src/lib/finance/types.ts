@@ -40,8 +40,13 @@ export type Fleet = {
   name: string;
   regNo: string;
   kind: FleetKind;
-  /** Monthly rent charged to the driver (0 if company-owned, no rent). */
+  /** Monthly rent charged to the driver (0 if company-owned / route-only). */
   monthlyRent: number;
+  /**
+   * When false, vehicle is route-only (no rent collected from driver).
+   * Missing on older data → treat as true if monthlyRent > 0.
+   */
+  chargesRent?: boolean;
   active: boolean;
   loanId: string | null;
   note: string;
