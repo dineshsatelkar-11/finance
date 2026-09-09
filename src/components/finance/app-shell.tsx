@@ -16,6 +16,10 @@ import {
 import { cn } from "@/lib/utils";
 import { monthLabel } from "@/lib/finance/format";
 import { useFinance } from "@/lib/finance/store";
+import {
+  hydrateFinanceFromDb,
+  startFinanceDbSync,
+} from "@/lib/finance/sync";
 
 const NAV = [
   { to: "/", label: "Overview", icon: LayoutDashboard, primary: true },
@@ -37,9 +41,26 @@ export function AppShell({ children }: { children: ReactNode }) {
   const month = useFinance((s) => s.month);
   const setMonth = useFinance((s) => s.setMonth);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [dbNote, setDbNote] = useState<string | null>(null);
 
   useEffect(() => {
     void useFinance.persist.rehydrate();
+    const unsub = startFinanceDbSync();
+    void hydrateFinanceFromDb().then((r) => {
+      if (!r.ok) {
+        setDbNote(r.error ? `DB offline: ${r.error}` : "DB offline — using local data");
+        return;
+      }
+      if (r.source === "seed-pushed") {
+        setDbNote("Neon connected — demo data saved to database");
+      } else if (r.source === "neon") {
+        setDbNote("Neon connected — data loaded from database");
+      }
+      window.setTimeout(() => setDbNote(null), 5000);
+    });
+    return () => {
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
@@ -71,7 +92,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           </label>
         </div>
 
-        {/* Desktop / tablet top nav */}
         <nav className="mx-auto hidden max-w-6xl gap-1 overflow-x-auto px-2 pb-2 sm:flex sm:px-4">
           {NAV.map(({ to, label, icon: Icon }) => {
             const active = pathname === to;
@@ -95,11 +115,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6 pb-24 sm:px-6 sm:pb-6">
+        {dbNote ? (
+          <p className="mb-3 rounded-md border border-line bg-accent-soft px-3 py-2 text-[12px] text-ink">
+            {dbNote}
+          </p>
+        ) : null}
         <p className="mb-4 text-[12px] text-subtle">{monthLabel(month)}</p>
         {children}
       </main>
 
-      {/* Mobile bottom nav */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden">
         <div className="mx-auto flex max-w-lg items-stretch justify-between px-1 pt-1">
           {PRIMARY.map(({ to, label, icon: Icon }) => {
@@ -126,13 +150,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               secondaryActive || moreOpen ? "text-accent" : "text-muted",
             )}
           >
-            <MoreHorizontal className={cn("size-5", (secondaryActive || moreOpen) && "stroke-[2.25]")} />
+            <MoreHorizontal
+              className={cn("size-5", (secondaryActive || moreOpen) && "stroke-[2.25]")}
+            />
             <span>More</span>
           </button>
         </div>
       </nav>
 
-      {/* Mobile More sheet */}
       {moreOpen ? (
         <div className="fixed inset-0 z-50 sm:hidden">
           <button
