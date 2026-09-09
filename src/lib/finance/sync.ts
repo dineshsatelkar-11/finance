@@ -1,6 +1,22 @@
 import { useFinance } from "./store";
-import { loadFinanceFromDb, saveFinanceToDb } from "./db-api";
+import { loadFinanceFromDb, saveFinanceToDb, clearFinanceDb } from "./db-api";
 import type { FinanceSnapshot } from "./types";
+
+export const EMPTY_FINANCE_SNAPSHOT: FinanceSnapshot = {
+  drivers: [],
+  fleets: [],
+  loans: [],
+  loanPayments: [],
+  banks: [],
+  vendors: [],
+  customers: [],
+  receipts: [],
+  rentPayments: [],
+  attendances: [],
+  rentWaivers: [],
+  payouts: [],
+  expenses: [],
+};
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let hydrated = false;
@@ -52,7 +68,7 @@ async function pushSnapshot(snap: FinanceSnapshot) {
   return saveFinanceToDb({ data: snap });
 }
 
-/** Load from Neon. If DB empty, push current (seed) state into Neon. */
+/** Load from Neon. Empty DB → empty UI (no auto demo seed). */
 export async function hydrateFinanceFromDb(): Promise<{
   ok: boolean;
   source: "neon" | "seed-pushed" | "local";
@@ -67,13 +83,9 @@ export async function hydrateFinanceFromDb(): Promise<{
       return { ok: false, source: "local", error: res.error };
     }
     if (res.empty || !res.data) {
-      const snap = snapshotFromStore();
-      const save = await pushSnapshot(snap);
+      applySnapshot(EMPTY_FINANCE_SNAPSHOT);
       hydrated = true;
-      if (!save.ok) {
-        return { ok: false, source: "local", error: save.error };
-      }
-      return { ok: true, source: "seed-pushed" };
+      return { ok: true, source: "neon" };
     }
     applySnapshot(res.data);
     hydrated = true;
@@ -90,7 +102,6 @@ export async function hydrateFinanceFromDb(): Promise<{
   }
 }
 
-/** Debounced full snapshot save to Neon (after local edits). */
 export function scheduleFinanceSave(delayMs = 800) {
   if (!hydrated || hydrating) return;
   if (saveTimer) clearTimeout(saveTimer);
@@ -116,7 +127,6 @@ export async function flushFinanceSave(): Promise<{ ok: boolean; error?: string 
   }
 }
 
-/** Subscribe once: any store change after hydrate → schedule save. */
 export function startFinanceDbSync() {
   let first = true;
   return useFinance.subscribe(() => {
@@ -127,4 +137,25 @@ export function startFinanceDbSync() {
     if (!hydrated || hydrating) return;
     scheduleFinanceSave();
   });
+}
+
+/** Clear Neon + local store (and browser persist). */
+export async function clearAllFinanceData(): Promise<{ ok: boolean; error?: string }> {
+  hydrating = true;
+  try {
+    const res = await clearFinanceDb();
+    if (!res.ok) return res;
+    applySnapshot(EMPTY_FINANCE_SNAPSHOT);
+    try {
+      localStorage.removeItem("satelkar-finance-v5");
+    } catch {
+      // ignore
+    }
+    hydrated = true;
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    hydrating = false;
+  }
 }

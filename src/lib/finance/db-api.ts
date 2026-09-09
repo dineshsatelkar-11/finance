@@ -59,3 +59,19 @@ export const saveFinanceToDb = createServerFn({ method: "POST" }).handler(
     }
   },
 );
+
+/** Wipe all finance rows in Neon / PGLite. */
+export const clearFinanceDb = createServerFn({ method: "POST" }).handler(
+  async (): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const { clearFinanceTables } = await import("./db-repo.server");
+      await clearFinanceTables();
+      return { ok: true };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
