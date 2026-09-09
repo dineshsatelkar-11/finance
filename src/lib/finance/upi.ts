@@ -145,3 +145,31 @@ export function isLikelyMobile() {
   if (typeof navigator === "undefined") return false;
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
+
+/** Full UPI pay URI used for QR and intents. */
+export function upiPayUri(opts: {
+  vpa: string;
+  payeeName: string;
+  amount?: number;
+}): string | null {
+  const pa = normalizeVpa(opts.vpa);
+  if (!isValidVpa(pa)) return null;
+  const params = new URLSearchParams();
+  params.set("pa", pa);
+  params.set("pn", String(opts.payeeName || "Payee").slice(0, 50));
+  const am = Number(opts.amount);
+  if (Number.isFinite(am) && am > 0) {
+    params.set("am", am.toFixed(2));
+  }
+  params.set("cu", "INR");
+  return `upi://pay?${params.toString()}`;
+}
+
+/**
+ * QR image URL for a UPI pay string.
+ * Size is pixels for the square image.
+ */
+export function upiQrImageSrc(upiUri: string, size = 280) {
+  const data = encodeURIComponent(upiUri);
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&ecc=M&margin=8&data=${data}`;
+}
