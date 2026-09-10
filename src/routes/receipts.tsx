@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Pencil, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,10 @@ function ReceiptsPage() {
   const customers = useFinance((s) => s.customers);
   const fleets = useFinance((s) => s.fleets);
   const recordReceipt = useFinance((s) => s.recordReceipt);
+  const updateReceipt = useFinance((s) => s.updateReceipt);
+  const removeReceipt = useFinance((s) => s.removeReceipt);
   const upsertCustomer = useFinance((s) => s.upsertCustomer);
+  const removeCustomer = useFinance((s) => s.removeCustomer);
 
   const [customerId, setCustomerId] = useState(customers[0]?.id || "");
   const [amount, setAmount] = useState("");
@@ -198,22 +201,57 @@ function ReceiptsPage() {
           const fleet = fleets.find((f) => f.id === r.fleetId);
           const c = customers.find((x) => x.id === r.customerId);
           return (
-            <Card key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{r.customerName}</span>
-                  <Badge tone="ok">{r.mode.toUpperCase()}</Badge>
-                  {fleet ? <Badge tone="accent">{fleet.name}</Badge> : null}
+            <Card key={r.id} className="p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{r.customerName}</span>
+                    <Badge tone="ok">{r.mode.toUpperCase()}</Badge>
+                    {fleet ? <Badge tone="accent">{fleet.name}</Badge> : null}
+                  </div>
+                  <p className="mt-1 text-[12px] text-muted">
+                    {shortDate(r.date)}
+                    {r.note ? ` · ${r.note}` : ""}
+                  </p>
                 </div>
-                <p className="mt-1 text-[12px] text-muted">
-                  {shortDate(r.date)}
-                  {r.note ? ` · ${r.note}` : ""}
-                </p>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium tabular-nums text-ok">{inr(r.amount)}</span>
+                  <Button size="sm" variant="outline" onClick={() => shareWa(r)} title="WhatsApp">
+                    <MessageCircle className="size-4" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium tabular-nums text-ok">{inr(r.amount)}</span>
-                <Button size="sm" variant="outline" onClick={() => shareWa(r)} title="WhatsApp">
-                  <MessageCircle className="size-4" />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const raw = window.prompt("New amount (₹)", String(r.amount));
+                    if (raw == null) return;
+                    const amt = parseFloat(raw);
+                    if (!(amt > 0)) {
+                      toast.error("Invalid amount");
+                      return;
+                    }
+                    const note = window.prompt("Note", r.note || "") ?? r.note;
+                    updateReceipt(r.id, { amount: amt, note: note || "" });
+                    toast.success("Receipt updated");
+                  }}
+                >
+                  <Pencil className="size-3.5" /> Edit
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!window.confirm("Delete this receipt?")) return;
+                    removeReceipt(r.id);
+                    toast.message("Receipt deleted");
+                  }}
+                >
+                  <Trash2 className="size-3.5" /> Delete
                 </Button>
               </div>
             </Card>
