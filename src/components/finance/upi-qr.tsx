@@ -1,7 +1,16 @@
-import { useMemo } from "react";
-import { upiPayUri, upiQrImageSrc, isValidVpa, normalizeVpa } from "@/lib/finance/upi";
+import { useMemo, useState } from "react";
+import { upiPayUri, isValidVpa, normalizeVpa } from "@/lib/finance/upi";
+import { qrSvgDataUrl } from "@/lib/finance/qr-svg";
 import { inr } from "@/lib/finance/format";
 import { cn } from "@/lib/utils";
+
+function fallbackUrls(uri: string, size: number) {
+  const q = encodeURIComponent(uri);
+  return [
+    `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&ecc=M&margin=8&data=${q}`,
+    `https://quickchart.io/qr?text=${q}&size=${size}&margin=2`,
+  ];
+}
 
 export function UpiQr({
   vpa,
@@ -28,6 +37,12 @@ export function UpiQr({
     [vpa, payeeName, amount],
   );
 
+  const offline = useMemo(() => (uri ? qrSvgDataUrl(uri, size) : ""), [uri, size]);
+  const cdn = useMemo(() => (uri ? fallbackUrls(uri, size) : []), [uri, size]);
+  const [srcIndex, setSrcIndex] = useState(0);
+  const sources = offline ? [offline, ...cdn] : cdn;
+  const src = sources[Math.min(srcIndex, Math.max(0, sources.length - 1))] || "";
+
   if (!uri || !isValidVpa(vpa)) {
     return (
       <div className="rounded-lg border border-line bg-raised px-3 py-6 text-center text-sm text-muted">
@@ -36,23 +51,31 @@ export function UpiQr({
     );
   }
 
-  const src = upiQrImageSrc(uri, size);
-
   return (
     <div className={cn("flex flex-col items-center gap-2", className)}>
       <div className="rounded-xl border border-line bg-white p-3 shadow-[var(--shadow-lift)]">
-        <img
-          src={src}
-          alt={`UPI QR for ${normalizeVpa(vpa)}`}
-          width={size}
-          height={size}
-          className="block h-auto max-w-full"
-          loading="eager"
-        />
+        {src ? (
+          <img
+            src={src}
+            alt={`UPI QR for ${normalizeVpa(vpa)}`}
+            width={size}
+            height={size}
+            className="block h-auto max-w-full"
+            loading="eager"
+            onError={() => setSrcIndex((i) => i + 1)}
+          />
+        ) : (
+          <div
+            className="flex items-center justify-center text-center text-[12px] text-muted"
+            style={{ width: size, height: size }}
+          >
+            QR unavailable — use Copy UPI ID
+          </div>
+        )}
       </div>
       <div className="text-center">
         <div className="text-sm font-medium text-ink">{payeeName || "Payee"}</div>
-        <div className="text-[12px] tabular-nums text-muted">{normalizeVpa(vpa)}</div>
+        <div className="select-all text-[13px] font-medium tabular-nums text-ink">{normalizeVpa(vpa)}</div>
         {amount && amount > 0 ? (
           <div className="mt-0.5 font-display text-lg font-medium tabular-nums text-ink">{inr(amount)}</div>
         ) : (
