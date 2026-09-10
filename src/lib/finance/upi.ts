@@ -108,6 +108,8 @@ export type UpiIntentResult = {
   paytmUnsafe: boolean;
 };
 
+export type UpiAppId = "paytm" | "phonepe" | "gpay" | "generic";
+
 /**
  * Soft P2P intent only: pa + pn + cu, optional am.
  * Do NOT send tn / tr / mc / mode — those trip Paytm/PhonePe security blocks.
@@ -154,6 +156,14 @@ export function isLikelyMobile() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
+export function detectMobileOs(): "android" | "ios" | "other" {
+  if (typeof navigator === "undefined") return "other";
+  const ua = navigator.userAgent || "";
+  if (/Android/i.test(ua)) return "android";
+  if (/iPhone|iPad|iPod/i.test(ua)) return "ios";
+  return "other";
+}
+
 /** Full UPI pay URI used for QR and intents. */
 export function upiPayUri(opts: {
   vpa: string;
@@ -171,6 +181,67 @@ export function upiPayUri(opts: {
   }
   params.set("cu", "INR");
   return `upi://pay?${params.toString()}`;
+}
+
+/**
+ * Build a deep-link for a specific UPI app. Amount is optional.
+ * Returns the URL opened (if any) and the text that was prepared for clipboard.
+ */
+export function openUpiAppLink(
+  app: UpiAppId,
+  opts: { vpa: string; payeeName: string; amount?: number },
+): { url: string | null; copied: string } {
+  const intent = buildUpiIntent(opts);
+  const copied = payPacketText(opts);
+  if (!intent) return { url: null, copied };
+
+  const upi = intent.url; // upi://pay?...
+  const qs = upi.includes("?") ? upi.slice(upi.indexOf("?") + 1) : "";
+
+  let url: string | null = upi;
+  if (app === "paytm") {
+    // Paytm Android intent / iOS universal-style fallbacks
+    url = `paytmmp://cash_wallet?featuretype=money_transfer&${qs}`;
+  } else if (app === "phonepe") {
+    url = `phonepe://pay?${qs}`;
+  } else if (app === "gpay") {
+    url = `tez://upi/pay?${qs}`;
+  }
+
+  if (typeof window !== "undefined" && url) {
+    try {
+      window.location.href = url;
+    } catch {
+      /* ignore */
+    }
+  }
+  return { url, copied };
+}
+
+/** Web Share API when available; otherwise copy details. */
+export async function sharePayDetails(opts: {
+  vpa: string;
+  payeeName: string;
+  amount?: number;
+}): Promise<"shared" | "copied" | "failed"> {
+  const text = payPacketText(opts);
+  try {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      await navigator.share({ title: "UPI payment", text });
+      return "shared";
+    }
+  } catch {
+    /* fall through to copy */
+  }
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return "copied";
+    }
+  } catch {
+    /* ignore */
+  }
+  return "failed";
 }
 
 /**
