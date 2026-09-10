@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Copy, MessageCircle, ShieldAlert, Smartphone } from "lucide-react";
+import { Copy, MessageCircle, Share2, ShieldAlert, Smartphone } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,13 +13,16 @@ import { defaultBankId, useFinance } from "@/lib/finance/store";
 import { inr, openWhatsApp, suggestedSalary, todayISO, WORKING_DAYS } from "@/lib/finance/format";
 import type { PayMode, PayoutKind } from "@/lib/finance/types";
 import {
-  buildUpiIntent,
+  detectMobileOs,
   isLikelyMobile,
   isValidVpa,
   maskVpa,
   normalizeVpa,
+  openUpiAppLink,
   parseUpiPayload,
   payPacketText,
+  sharePayDetails,
+  type UpiAppId,
 } from "@/lib/finance/upi";
 
 const KINDS: { id: PayoutKind; label: string }[] = [
@@ -90,6 +93,7 @@ export function PaySheet({
   const driver = drivers.find((d) => d.id === id);
   const leaveN = Math.max(0, Math.floor(parseFloat(leaveDays) || 0));
   const salaryHint = driver ? suggestedSalary(driver, leaveN) : 0;
+  const os = detectMobileOs();
 
   const vpa = useMemo(() => {
     const p = parseUpiPayload(upi);
@@ -146,19 +150,39 @@ export function PaySheet({
     setRevealed(false);
   }
 
-  function openUpiApp() {
+  function openApp(app: UpiAppId) {
     if (!driver) return;
-    const intent = buildUpiIntent({ vpa, payeeName: payee || driver.name, amount: parseFloat(amount) });
-    if (!intent) {
-      toast.error("Could not build a UPI link.");
-      return;
-    }
-    void copy(payPacketText({ vpa, payeeName: payee || driver.name, amount: parseFloat(amount) }), "Pay details");
+    const amt = parseFloat(amount) || 0;
+    const r = openUpiAppLink(app, {
+      vpa,
+      payeeName: payee || driver.name,
+      amount: amt > 0 ? amt : undefined,
+    });
+    void copy(r.copied, "Pay details");
     if (!isLikelyMobile()) {
-      toast.message("UPI apps only open on a phone. Details copied — paste in Paytm or PhonePe.");
+      toast.message("Open on a phone. Details copied — paste in Paytm or PhonePe.");
       return;
     }
-    window.location.href = intent.url;
+    toast.message(
+      app === "paytm"
+        ? "Opening Paytm… if it fails, use Copy UPI ID"
+        : app === "phonepe"
+          ? "Opening PhonePe… if it fails, use Copy UPI ID"
+          : "Opening UPI app…",
+    );
+  }
+
+  async function onShare() {
+    if (!driver) return;
+    const amt = parseFloat(amount) || 0;
+    const res = await sharePayDetails({
+      vpa,
+      payeeName: payee || driver.name,
+      amount: amt > 0 ? amt : undefined,
+    });
+    if (res === "shared") toast.success("Shared");
+    else if (res === "copied") toast.success("Pay details copied");
+    else toast.error("Share failed — use Copy UPI ID");
   }
 
   function markPaid() {
@@ -404,19 +428,43 @@ export function PaySheet({
               <>
                 <div className="rounded-xl border border-accent/30 bg-accent-soft/40 px-3 py-4">
                   <div className="mb-2 text-center text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
-                    Scan with Paytm / GPay / PhonePe
+                    Scan QR (amount open — enter in app)
                   </div>
                   <UpiQr
                     vpa={vpa}
                     payeeName={payee || driver?.name || "Driver"}
-                    amount={parseFloat(amount) || 0}
                     size={240}
-                    caption="Open Paytm → Scan & Pay → point at this QR. On the same phone, use Copy UPI ID instead."
+                    caption="QR has no fixed amount. After scan, type the amount in Paytm / PhonePe. Same phone: use buttons below."
                   />
                 </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button type="button" variant="outline" onClick={() => openApp("paytm")}>
+                    Paytm
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => openApp("phonepe")}>
+                    PhonePe
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button type="button" variant="outline" onClick={() => openApp("gpay")}>
+                    GPay
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => void onShare()}>
+                    <Share2 className="size-4" /> Share
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted">
+                  {os === "ios"
+                    ? "iPhone: app buttons try Paytm / PhonePe; if blocked, use Copy UPI ID."
+                    : os === "android"
+                      ? "Android: opens the selected app when installed."
+                      : "On desktop, details are copied — paste in a UPI app on phone."}
+                </p>
+
                 <div className="flex items-start gap-2 rounded-md border border-warn/25 bg-warn-soft px-3 py-2.5 text-[13px] leading-snug text-warn">
                   <ShieldAlert className="mt-0.5 size-4 shrink-0" />
-                  Paytm often blocks “Open UPI app” from websites. Prefer QR scan (second phone) or Copy UPI ID.
+                  Some apps block in-app links. Copy UPI ID is the most reliable on iPhone.
                 </div>
                 <div className="rounded-lg border border-line bg-raised px-3 py-3">
                   <div className="flex items-center justify-between">
@@ -452,11 +500,11 @@ export function PaySheet({
                     <Copy /> Copy details
                   </Button>
                 </div>
-                <Button variant="navy" className="w-full" onClick={openUpiApp}>
-                  <Smartphone /> Open UPI app
+                <Button variant="navy" className="w-full" onClick={() => openApp("upi")}>
+                  <Smartphone /> Open any UPI app
                 </Button>
                 <p className="text-[12px] text-muted">
-                  Payment is not marked paid until you confirm below. Scanning or opening an app never records a payout alone.
+                  Payment is not marked paid until you confirm below.
                 </p>
               </>
             ) : (
