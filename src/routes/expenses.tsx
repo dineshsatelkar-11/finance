@@ -32,6 +32,7 @@ function ExpensesPage() {
   const updateExpense = useFinance((s) => s.updateExpense);
   const removeExpense = useFinance((s) => s.removeExpense);
   const upsertVendor = useFinance((s) => s.upsertVendor);
+  const removeVendor = useFinance((s) => s.removeVendor);
 
   const [cat, setCat] = useState("Fuel");
   const [vendorId, setVendorId] = useState("none");
@@ -229,11 +230,46 @@ function ExpensesPage() {
         <p className="mt-1 text-sm text-muted">Select a vendor above to auto-fill UPI when you pay.</p>
         <ul className="mt-3 divide-y divide-line">
           {vendors.map((x) => (
-            <li key={x.id} className="flex items-center justify-between py-3 text-sm">
-              <span className="font-medium">{x.name}</span>
-              <span className="font-mono text-[12px] text-muted">
-                {x.upiVpa ? maskVpa(x.upiVpa) : "No UPI"}
-              </span>
+            <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+              <div>
+                <span className="font-medium">{x.name}</span>
+                <div className="font-mono text-[12px] text-muted">
+                  {x.upiVpa ? maskVpa(x.upiVpa) : "No UPI"}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const name = window.prompt("Vendor name", x.name);
+                    if (name == null) return;
+                    const upi = window.prompt("UPI ID (optional)", x.upiVpa || "") ?? x.upiVpa;
+                    upsertVendor({
+                      ...x,
+                      name: name.trim() || x.name,
+                      upiVpa: (upi || "").trim().toLowerCase(),
+                      upiPayeeName: name.trim() || x.upiPayeeName,
+                    });
+                    toast.success("Vendor updated");
+                  }}
+                >
+                  <Pencil className="size-3.5" /> Edit
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (!window.confirm(`Delete vendor "${x.name}"?`)) return;
+                    removeVendor(x.id);
+                    toast.message("Vendor deleted");
+                  }}
+                >
+                  <Trash2 className="size-3.5" /> Delete
+                </Button>
+              </div>
             </li>
           ))}
         </ul>
