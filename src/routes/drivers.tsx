@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Wallet } from "lucide-react";
+import { Plus, Trash2, Wallet } from "lucide-react";
+import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ function DriversPage() {
   const month = useFinance((s) => s.month);
   const attendances = useFinance((s) => s.attendances);
   const setAttendance = useFinance((s) => s.setAttendance);
+  const removeDriver = useFinance((s) => s.removeDriver);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Driver | null>(null);
   const [payOpen, setPayOpen] = useState(false);
@@ -89,7 +91,7 @@ function DriversPage() {
                 })()}
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
               <Button
                 variant="outline"
                 onClick={() => {
@@ -97,7 +99,7 @@ function DriversPage() {
                   setFormOpen(true);
                 }}
               >
-                {d.upiVpa ? "Edit / change UPI" : "Add UPI ID"}
+                Edit
               </Button>
               <Button
                 onClick={() => {
@@ -106,6 +108,16 @@ function DriversPage() {
                 }}
               >
                 <Wallet /> Pay
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (!window.confirm(`Delete driver "${d.name}" and their payout history?`)) return;
+                  removeDriver(d.id);
+                  toast.message("Driver deleted");
+                }}
+              >
+                <Trash2 className="size-3.5" /> Delete
               </Button>
             </div>
           </Card>
