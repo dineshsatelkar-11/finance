@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +20,7 @@ import { inr, shortDate, todayISO, uid } from "@/lib/finance/format";
 import type { BankAccount } from "@/lib/finance/types";
 import { UpiQr } from "@/components/finance/upi-qr";
 import { isValidVpa, normalizeVpa, parseUpiPayload } from "@/lib/finance/upi";
-import { ArrowLeftRight, QrCode } from "lucide-react";
+import { ArrowLeftRight, QrCode, Pencil, Trash2 } from "lucide-react";
 
 export const Route = createFileRoute("/bank")({ component: BankPage });
 
@@ -31,6 +32,8 @@ function BankPage() {
   const drivers = useFinance((s) => s.drivers);
   const bankTransfers = useFinance((s) => s.bankTransfers ?? []);
   const upsertBank = useFinance((s) => s.upsertBank);
+  const removeBank = useFinance((s) => s.removeBank);
+  const removeBankTransfer = useFinance((s) => s.removeBankTransfer);
   const setDefaultBank = useFinance((s) => s.setDefaultBank);
   const recordBankTransfer = useFinance((s) => s.recordBankTransfer);
   const [clearing, setClearing] = useState(false);
@@ -365,6 +368,22 @@ function BankPage() {
                   <Button type="button" variant="outline" size="sm" onClick={() => openEdit(b)}>
                     Edit
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (!window.confirm(`Delete bank "${b.name}"?`)) return;
+                      const r = removeBank(b.id);
+                      if (!r.ok) {
+                        toast.error(r.error);
+                        return;
+                      }
+                      toast.message("Bank deleted");
+                    }}
+                  >
+                    <Trash2 className="size-3.5" /> Delete
+                  </Button>
                 </div>
               </div>
               <CardHint>Opening {inr(b.opening)}</CardHint>
@@ -432,20 +451,40 @@ function BankPage() {
             .sort((a, b) => b.sort.localeCompare(a.sort))
             .slice(0, 25)
             .map((r) => (
-              <li key={r.id} className="flex items-center justify-between py-3 text-sm">
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
                 <div>
                   <div className="font-medium capitalize">{r.label}</div>
                   <div className="text-[12px] text-muted">
                     {shortDate(r.date)} · {r.sub}
                   </div>
                 </div>
-                <div
-                  className={
-                    r.kind === "xfer" ? "tabular-nums text-muted" : "tabular-nums text-danger"
-                  }
-                >
-                  {r.kind === "xfer" ? "↔" : "−"}
-                  {inr(r.amount)}
+                <div className="flex items-center gap-2">
+                  <div
+                    className={
+                      r.kind === "xfer" ? "tabular-nums text-muted" : "tabular-nums text-danger"
+                    }
+                  >
+                    {r.kind === "xfer" ? "↔" : "−"}
+                    {inr(r.amount)}
+                  </div>
+                  {r.kind === "xfer" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (!window.confirm("Delete this transfer? Balances will be reversed.")) return;
+                        const res = removeBankTransfer(r.id);
+                        if (!res.ok) {
+                          toast.error(res.error);
+                          return;
+                        }
+                        toast.message("Transfer deleted");
+                      }}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  ) : null}
                 </div>
               </li>
             ))}
