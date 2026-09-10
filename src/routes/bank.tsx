@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,9 @@ import { useFinance } from "@/lib/finance/store";
 import { clearAllFinanceData } from "@/lib/finance/sync";
 import { inr, shortDate, uid } from "@/lib/finance/format";
 import type { BankAccount } from "@/lib/finance/types";
+import { UpiQr } from "@/components/finance/upi-qr";
+import { isValidVpa, normalizeVpa, parseUpiPayload } from "@/lib/finance/upi";
+import { QrCode } from "lucide-react";
 
 export const Route = createFileRoute("/bank")({ component: BankPage });
 
@@ -29,6 +32,38 @@ function BankPage() {
   const [opening, setOpening] = useState("");
   const [asDefault, setAsDefault] = useState(false);
   const [error, setError] = useState("");
+  const [qrOpen, setQrOpen] = useState(false);
+  const [collectVpa, setCollectVpa] = useState("");
+  const [collectName, setCollectName] = useState("Satelkar Logistics");
+  const [collectAmt, setCollectAmt] = useState("");
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("finance.collectUpi");
+      if (raw) {
+        const j = JSON.parse(raw) as { vpa?: string; name?: string };
+        if (j.vpa) setCollectVpa(j.vpa);
+        if (j.name) setCollectName(j.name);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function saveCollectUpi() {
+    const p = parseUpiPayload(collectVpa);
+    const vpa = p?.vpa || (isValidVpa(collectVpa) ? normalizeVpa(collectVpa) : "");
+    if (!vpa) return;
+    setCollectVpa(vpa);
+    try {
+      localStorage.setItem(
+        "finance.collectUpi",
+        JSON.stringify({ vpa, name: collectName.trim() || "Satelkar Logistics" }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
 
   const paidOut = [...payouts, ...expenses].filter(
     (r) => r.status === "paid" && r.date.startsWith(month),
@@ -70,66 +105,124 @@ function BankPage() {
     setOpen(false);
   }
 
+  const collectVpaClean = (() => {
+    const p = parseUpiPayload(collectVpa);
+    return p?.vpa || collectVpa;
+  })();
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl font-medium tracking-tight">Bank</h1>
+          <h1 className="page-title">Bank</h1>
           <p className="mt-1 text-sm text-muted">
             Opening balances plus this month’s confirmed outflows. Pending UPI is not deducted.
           </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button type="button" onClick={openAdd}>
-              Add bank
-            </Button>
-          </DialogTrigger>
-          <DialogContent title={editing ? "Edit bank" : "Add bank"}>
-            <div className="space-y-4 text-left">
-              <div className="space-y-1.5">
-                <Label htmlFor="bank-name">Account name</Label>
-                <Input
-                  id="bank-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. SBI Current · Pune"
-                  autoFocus
-                />
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => setQrOpen(true)}>
+            <QrCode className="size-4" /> Collect QR
+          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button type="button" onClick={openAdd}>
+                Add bank
+              </Button>
+            </DialogTrigger>
+            <DialogContent title={editing ? "Edit bank" : "Add bank"}>
+              <div className="space-y-4 text-left">
+                <div className="space-y-1.5">
+                  <Label htmlFor="bank-name">Account name</Label>
+                  <Input
+                    id="bank-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. SBI Current · Pune"
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="bank-opening">Opening balance (₹)</Label>
+                  <Input
+                    id="bank-opening"
+                    type="number"
+                    inputMode="decimal"
+                    value={opening}
+                    onChange={(e) => setOpening(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={asDefault}
+                    onChange={(e) => setAsDefault(e.target.checked)}
+                    className="size-4 rounded border-line"
+                  />
+                  Set as default account
+                </label>
+                {error ? <p className="text-sm text-danger">{error}</p> : null}
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="button" onClick={save}>
+                    {editing ? "Save" : "Add account"}
+                  </Button>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="bank-opening">Opening balance (₹)</Label>
-                <Input
-                  id="bank-opening"
-                  type="number"
-                  inputMode="decimal"
-                  value={opening}
-                  onChange={(e) => setOpening(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-              <label className="flex items-center gap-2 text-sm text-ink">
-                <input
-                  type="checkbox"
-                  checked={asDefault}
-                  onChange={(e) => setAsDefault(e.target.checked)}
-                  className="size-4 rounded border-line"
-                />
-                Set as default account
-              </label>
-              {error ? <p className="text-sm text-danger">{error}</p> : null}
-              <div className="flex justify-end gap-2 pt-1">
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="button" onClick={save}>
-                  {editing ? "Save" : "Add account"}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
+
+      <Dialog open={qrOpen} onOpenChange={setQrOpen}>
+        <DialogContent title="Collect money — show QR">
+          <div className="space-y-4">
+            <p className="text-sm text-muted">
+              Show this QR to a driver or customer. They open Paytm / GPay → Scan & Pay → money comes to your UPI.
+            </p>
+            <div>
+              <Label>Your UPI ID</Label>
+              <Input
+                value={collectVpa}
+                onChange={(e) => setCollectVpa(e.target.value)}
+                onBlur={saveCollectUpi}
+                placeholder="yourname@paytm"
+              />
+            </div>
+            <div>
+              <Label>Name on UPI</Label>
+              <Input
+                value={collectName}
+                onChange={(e) => setCollectName(e.target.value)}
+                onBlur={saveCollectUpi}
+                placeholder="Satelkar Logistics"
+              />
+            </div>
+            <div>
+              <Label>Amount (₹) — optional</Label>
+              <Input
+                inputMode="decimal"
+                className="tabular-nums"
+                value={collectAmt}
+                onChange={(e) => setCollectAmt(e.target.value)}
+                placeholder="Leave blank for open amount"
+              />
+            </div>
+            <UpiQr
+              vpa={collectVpaClean}
+              payeeName={collectName || "Satelkar Logistics"}
+              amount={parseFloat(collectAmt) || undefined}
+              size={240}
+              caption="Hold this screen steady while they scan."
+            />
+            <Button type="button" className="w-full" onClick={saveCollectUpi}>
+              Save UPI for next time
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-3 sm:grid-cols-2">
         {banks.map((b) => {
@@ -137,17 +230,19 @@ function BankPage() {
             .filter((r) => r.bankAccountId === b.id)
             .reduce((s, r) => s + r.amount, 0);
           return (
-            <Card key={b.id}>
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-base">{b.name}</CardTitle>
-                <div className="flex items-center gap-2">
-                  {b.isDefault ? <Badge tone="accent">Default</Badge> : null}
-                  <Button type="button" variant="outline" size="sm" onClick={() => openEdit(b)}>
-                    Edit
-                  </Button>
+            <Card key={b.id} className="p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CardTitle className="text-base">{b.name}</CardTitle>
+                    {b.isDefault ? <Badge tone="accent">Default</Badge> : null}
+                  </div>
+                  <CardHint>Opening {inr(b.opening)}</CardHint>
                 </div>
+                <Button type="button" size="sm" variant="outline" onClick={() => openEdit(b)}>
+                  Edit
+                </Button>
               </div>
-              <CardHint>Opening {inr(b.opening)}</CardHint>
               <div className="mt-4 font-display text-3xl font-medium tabular-nums tracking-tight">
                 {inr(b.opening - out)}
               </div>
