@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { Pencil, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,8 @@ function ExpensesPage() {
   const vendors = useFinance((s) => s.vendors);
   const fleets = useFinance((s) => s.fleets);
   const record = useFinance((s) => s.recordExpense);
+  const updateExpense = useFinance((s) => s.updateExpense);
+  const removeExpense = useFinance((s) => s.removeExpense);
   const upsertVendor = useFinance((s) => s.upsertVendor);
 
   const [cat, setCat] = useState("Fuel");
@@ -261,20 +264,55 @@ function ExpensesPage() {
         {rows.map((e) => {
           const fleet = fleets.find((f) => f.id === e.fleetId);
           return (
-            <Card key={e.id} className="flex items-center justify-between p-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{e.category}</span>
-                  <Badge tone="muted">{e.vendor}</Badge>
-                  {fleet ? <Badge tone="accent">{fleet.name}</Badge> : null}
+            <Card key={e.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{e.category}</span>
+                    <Badge tone="muted">{e.vendor}</Badge>
+                    {fleet ? <Badge tone="accent">{fleet.name}</Badge> : null}
+                  </div>
+                  <p className="mt-1 text-[12px] text-muted">
+                    {shortDate(e.date)} · {e.mode.toUpperCase()}
+                    {e.upiVpa ? ` · ${maskVpa(e.upiVpa)}` : ""}
+                    {e.note ? ` · ${e.note}` : ""}
+                  </p>
                 </div>
-                <p className="mt-1 text-[12px] text-muted">
-                  {shortDate(e.date)} · {e.mode.toUpperCase()}
-                  {e.upiVpa ? ` · ${maskVpa(e.upiVpa)}` : ""}
-                  {e.note ? ` · ${e.note}` : ""}
-                </p>
+                <div className="font-medium tabular-nums">{inr(e.amount)}</div>
               </div>
-              <div className="font-medium tabular-nums">{inr(e.amount)}</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const raw = window.prompt("New amount (₹)", String(e.amount));
+                    if (raw == null) return;
+                    const amt = parseFloat(raw);
+                    if (!(amt > 0)) {
+                      toast.error("Invalid amount");
+                      return;
+                    }
+                    const note = window.prompt("Note", e.note || "") ?? e.note;
+                    updateExpense(e.id, { amount: amt, note: note || "" });
+                    toast.success("Expense updated");
+                  }}
+                >
+                  <Pencil className="size-3.5" /> Edit
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!window.confirm("Delete this expense?")) return;
+                    removeExpense(e.id);
+                    toast.message("Expense deleted");
+                  }}
+                >
+                  <Trash2 className="size-3.5" /> Delete
+                </Button>
+              </div>
             </Card>
           );
         })}
