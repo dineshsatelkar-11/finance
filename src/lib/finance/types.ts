@@ -206,7 +206,8 @@ export type FinanceState = {
   loans: Loan[];
   loanPayments: LoanPayment[];
   banks: BankAccount[];
-  bankTransfers: BankTransfer[];
+  /** Optional until bank_transfers is fully loaded from Neon. */
+  bankTransfers?: BankTransfer[];
   vendors: Vendor[];
   customers: Customer[];
   receipts: Receipt[];
