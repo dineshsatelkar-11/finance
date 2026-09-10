@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Pencil, Trash2 } from "lucide-react";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,8 @@ function RentPage() {
   const rentPayments = useFinance((s) => s.rentPayments);
   const rentWaivers = useFinance((s) => s.rentWaivers);
   const recordRent = useFinance((s) => s.recordRent);
+  const updateRentPayment = useFinance((s) => s.updateRentPayment);
+  const removeRentPayment = useFinance((s) => s.removeRentPayment);
   const setRentWaiver = useFinance((s) => s.setRentWaiver);
   const [breakDays, setBreakDays] = useState("0");
   const [waiverNote, setWaiverNote] = useState("");
@@ -53,7 +55,6 @@ function RentPage() {
   const effectiveDriverId =
     driverId || assigned[0]?.id || drivers.find((d) => d.active)?.id || "";
 
-  // When fleet changes, default amount to monthly rent
   const suggested = fleet?.monthlyRent || 0;
 
   const monthRows = useMemo(
@@ -356,21 +357,56 @@ function RentPage() {
           const d = drivers.find((x) => x.id === r.driverId);
           const f = fleets.find((x) => x.id === r.fleetId);
           return (
-            <Card key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{d?.name || "Driver"}</span>
-                  <Badge tone="muted">{f?.name || "Fleet"}</Badge>
+            <Card key={r.id} className="p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{d?.name || "Driver"}</span>
+                    <Badge tone="muted">{f?.name || "Fleet"}</Badge>
+                  </div>
+                  <p className="mt-1 text-[12px] text-muted">
+                    {shortDate(r.date)} · {r.mode.toUpperCase()}
+                    {r.note ? ` · ${r.note}` : ""}
+                  </p>
                 </div>
-                <p className="mt-1 text-[12px] text-muted">
-                  {shortDate(r.date)} · {r.mode.toUpperCase()}
-                  {r.note ? ` · ${r.note}` : ""}
-                </p>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium tabular-nums">{inr(r.amount)}</span>
+                  <Button size="sm" variant="outline" onClick={() => shareWa(r)}>
+                    <MessageCircle className="size-4" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium tabular-nums">{inr(r.amount)}</span>
-                <Button size="sm" variant="outline" onClick={() => shareWa(r)}>
-                  <MessageCircle className="size-4" />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const raw = window.prompt("New amount (₹)", String(r.amount));
+                    if (raw == null) return;
+                    const amt = parseFloat(raw);
+                    if (!(amt > 0)) {
+                      toast.error("Invalid amount");
+                      return;
+                    }
+                    const note = window.prompt("Note", r.note || "") ?? r.note;
+                    updateRentPayment(r.id, { amount: amt, note: note || "" });
+                    toast.success("Rent payment updated");
+                  }}
+                >
+                  <Pencil className="size-3.5" /> Edit
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!window.confirm("Delete this rent payment?")) return;
+                    removeRentPayment(r.id);
+                    toast.message("Rent payment deleted");
+                  }}
+                >
+                  <Trash2 className="size-3.5" /> Delete
                 </Button>
               </div>
             </Card>
