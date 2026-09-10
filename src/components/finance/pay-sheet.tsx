@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { UpiField } from "@/components/finance/upi-field";
+import { UpiQr } from "@/components/finance/upi-qr";
 import { defaultBankId, useFinance } from "@/lib/finance/store";
 import { inr, openWhatsApp, suggestedSalary, todayISO, WORKING_DAYS } from "@/lib/finance/format";
 import type { PayMode, PayoutKind } from "@/lib/finance/types";
@@ -22,9 +23,9 @@ import {
 } from "@/lib/finance/upi";
 
 const KINDS: { id: PayoutKind; label: string }[] = [
+  { id: "advance", label: "Advance" },
   { id: "salary", label: "Salary" },
   { id: "bonus", label: "Bonus" },
-  { id: "advance", label: "Advance" },
   { id: "extra_route", label: "Extra route" },
   { id: "return", label: "Return" },
   { id: "fine", label: "Fine" },
@@ -49,7 +50,7 @@ export function PaySheet({
   const setPayoutStatus = useFinance((s) => s.setPayoutStatus);
 
   const [id, setId] = useState("");
-  const [kind, setKind] = useState<PayoutKind>("salary");
+  const [kind, setKind] = useState<PayoutKind>("advance");
   const [leaveDays, setLeaveDays] = useState("0");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayISO());
@@ -71,9 +72,9 @@ export function PaySheet({
     const att = st.attendances.find((a) => a.driverId === d?.id && a.month === st.month);
     const leaves = att?.leaveDays ?? 0;
     setId(d?.id || "");
-    setKind("salary");
+    setKind("advance");
     setLeaveDays(String(leaves));
-    setAmount(d ? String(suggestedSalary(d, leaves)) : "");
+    setAmount("");
     setDate(todayISO());
     setMode("upi");
     setBankId(defaultBankId());
@@ -204,7 +205,7 @@ export function PaySheet({
                   setUpi(d?.upiVpa || "");
                   setPayee(d?.upiPayeeName || d?.name || "");
                   setLeaveDays(String(leaves));
-                  if (d) setAmount(String(suggestedSalary(d, leaves)));
+                  if (kind === "salary" && d) setAmount(String(suggestedSalary(d, leaves)));
                 }}
               >
                 <SelectTrigger>
@@ -223,7 +224,7 @@ export function PaySheet({
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3">
               <div>
                 <Label>Type</Label>
                 <Select value={kind} onValueChange={(v) => setKind(v as PayoutKind)}>
@@ -255,7 +256,7 @@ export function PaySheet({
               <div className="rounded-lg border border-line bg-canvas/60 p-3 space-y-3">
                 {kind === "salary" ? (
                   <>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3">
                       <div>
                         <Label htmlFor="pay-leave">Leave days (this month)</Label>
                         <Input
@@ -309,7 +310,7 @@ export function PaySheet({
               </div>
             ) : null}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3">
               <div>
                 <Label htmlFor="pay-date">Date</Label>
                 <Input id="pay-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -401,10 +402,21 @@ export function PaySheet({
 
             {mode === "upi" ? (
               <>
+                <div className="rounded-xl border border-accent/30 bg-accent-soft/40 px-3 py-4">
+                  <div className="mb-2 text-center text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
+                    Scan with Paytm / GPay / PhonePe
+                  </div>
+                  <UpiQr
+                    vpa={vpa}
+                    payeeName={payee || driver?.name || "Driver"}
+                    amount={parseFloat(amount) || 0}
+                    size={240}
+                    caption="Open Paytm → Scan & Pay → point at this QR. On the same phone, use Copy UPI ID instead."
+                  />
+                </div>
                 <div className="flex items-start gap-2 rounded-md border border-warn/25 bg-warn-soft px-3 py-2.5 text-[13px] leading-snug text-warn">
                   <ShieldAlert className="mt-0.5 size-4 shrink-0" />
-                  Paytm often blocks in-app UPI links with a security error. Copy the UPI ID, open Paytm, then Pay to UPI
-                  ID.
+                  Paytm often blocks “Open UPI app” from websites. Prefer QR scan (second phone) or Copy UPI ID.
                 </div>
                 <div className="rounded-lg border border-line bg-raised px-3 py-3">
                   <div className="flex items-center justify-between">
@@ -444,7 +456,7 @@ export function PaySheet({
                   <Smartphone /> Open UPI app
                 </Button>
                 <p className="text-[12px] text-muted">
-                  Payment is not marked paid until you confirm below. Opening an app never records a payout on its own.
+                  Payment is not marked paid until you confirm below. Scanning or opening an app never records a payout alone.
                 </p>
               </>
             ) : (
