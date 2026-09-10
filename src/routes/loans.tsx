@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { AlertTriangle, Check } from "lucide-react";
+import { AlertTriangle, Check, Pencil, Trash2 } from "lucide-react";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,9 @@ function LoansPage() {
   const fleets = useFinance((s) => s.fleets);
   const month = useFinance((s) => s.month);
   const recordLoanPayment = useFinance((s) => s.recordLoanPayment);
+  const updateLoanPayment = useFinance((s) => s.updateLoanPayment);
+  const removeLoanPayment = useFinance((s) => s.removeLoanPayment);
+  const removeLoan = useFinance((s) => s.removeLoan);
   const ensureMonthlyEmi = useFinance((s) => s.ensureMonthlyEmi);
 
   const [selected, setSelected] = useState(loans[0]?.id || "");
@@ -134,6 +137,21 @@ function LoansPage() {
               {lowBalance && l.status === "active" ? (
                 <p className="mt-2 text-[12px] text-warn">High outstanding vs principal</p>
               ) : null}
+              <div className="mt-3 flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (!window.confirm(`Delete loan "${l.name}" and all its payments?`)) return;
+                    removeLoan(l.id);
+                    if (selected === l.id) setSelected("");
+                    toast.message("Loan deleted");
+                  }}
+                >
+                  <Trash2 className="size-3.5" /> Delete loan
+                </Button>
+              </div>
             </Card>
           );
         })}
@@ -152,7 +170,7 @@ function LoansPage() {
           </div>
           <ul className="mt-4 divide-y divide-line">
             {rows.slice(0, 15).map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <div>
                   <div className="font-medium capitalize">
                     {p.kind} · {shortDate(p.date)}
@@ -162,7 +180,7 @@ function LoansPage() {
                     {p.status === "pending" ? " · awaiting confirm" : ""}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="tabular-nums font-medium">{inr(p.amount)}</span>
                   {p.status === "pending" ? (
                     <Button size="sm" variant="outline" onClick={() => markPaid(p.id)}>
@@ -171,6 +189,35 @@ function LoansPage() {
                   ) : (
                     <Badge tone="ok">Paid</Badge>
                   )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const raw = window.prompt("New amount (₹)", String(p.amount));
+                      if (raw == null) return;
+                      const amt = parseFloat(raw);
+                      if (!(amt > 0)) {
+                        toast.error("Invalid amount");
+                        return;
+                      }
+                      const note = window.prompt("Note", p.note || "") ?? p.note;
+                      updateLoanPayment(p.id, { amount: amt, note: note || "" });
+                      toast.success("Payment updated");
+                    }}
+                  >
+                    <Pencil className="size-3.5" /> Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (!window.confirm("Delete this loan payment? Paid EMI delete will restore outstanding.")) return;
+                      removeLoanPayment(p.id);
+                      toast.message("Payment deleted");
+                    }}
+                  >
+                    <Trash2 className="size-3.5" /> Delete
+                  </Button>
                 </div>
               </li>
             ))}
