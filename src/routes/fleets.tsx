@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ function FleetsPage() {
   const expenses = useFinance((s) => s.expenses);
   const month = useFinance((s) => s.month);
   const upsertFleet = useFinance((s) => s.upsertFleet);
+  const removeFleet = useFinance((s) => s.removeFleet);
   const assignDriverFleet = useFinance((s) => s.assignDriverFleet);
 
   const [open, setOpen] = useState(false);
@@ -157,6 +158,46 @@ function FleetsPage() {
                   <Link to="/expenses" className="text-[12px] text-accent underline-offset-2 hover:underline">
                     Tag in expenses →
                   </Link>
+                  <div className="mt-2 flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const name = window.prompt("Fleet name", f.name);
+                        if (name == null) return;
+                        const reg = window.prompt("Reg no", f.regNo || "") ?? f.regNo;
+                        const rentRaw = window.prompt("Monthly rent (₹)", String(f.monthlyRent));
+                        if (rentRaw == null) return;
+                        const rent = parseFloat(rentRaw);
+                        if (!(rent >= 0)) {
+                          toast.error("Invalid rent");
+                          return;
+                        }
+                        upsertFleet({
+                          ...f,
+                          name: name.trim() || f.name,
+                          regNo: (reg || "").trim(),
+                          monthlyRent: rent,
+                        });
+                        toast.success("Fleet updated");
+                      }}
+                    >
+                      <Pencil className="size-3.5" /> Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (!window.confirm(`Delete fleet "${f.name}"? Drivers will be unassigned.`)) return;
+                        removeFleet(f.id);
+                        toast.message("Fleet deleted");
+                      }}
+                    >
+                      <Trash2 className="size-3.5" /> Delete
+                    </Button>
+                  </div>
                 </div>
               </div>
               <div className="mt-4 border-t border-line pt-3">
