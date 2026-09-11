@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Trash2, Wallet } from "lucide-react";
+import { List, Plus, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { DriverForm } from "@/components/finance/driver-form";
 import { PaySheet } from "@/components/finance/pay-sheet";
 import { useFinance } from "@/lib/finance/store";
-import { inr, initials, suggestedSalary, WORKING_DAYS } from "@/lib/finance/format";
+import { driverBalance, inr, initials, suggestedSalary, WORKING_DAYS } from "@/lib/finance/format";
 import { maskVpa } from "@/lib/finance/upi";
 import type { Driver } from "@/lib/finance/types";
 
@@ -20,6 +20,7 @@ function DriversPage() {
   const attendances = useFinance((s) => s.attendances);
   const setAttendance = useFinance((s) => s.setAttendance);
   const removeDriver = useFinance((s) => s.removeDriver);
+  const payouts = useFinance((s) => s.payouts);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Driver | null>(null);
   const [payOpen, setPayOpen] = useState(false);
@@ -68,9 +69,10 @@ function DriversPage() {
                   const att = attendances.find((a) => a.driverId === d.id && a.month === month);
                   const leaves = att?.leaveDays || 0;
                   const pay = suggestedSalary(d, leaves);
+                  const bal = driverBalance(d, month, payouts, leaves);
                   return (
                     <p className="mt-1 text-[12px] text-muted">
-                      Leave {leaves}d · this month pay ≈ {inr(pay)}
+                      Leave {leaves}d · suggested salary ≈ {inr(pay)} (settle at month end)
                       <button
                         type="button"
                         className="ml-2 text-accent underline-offset-2 hover:underline"
@@ -86,12 +88,23 @@ function DriversPage() {
                       >
                         Edit leave
                       </button>
+                      <span className="mt-0.5 block">
+                        Running balance {inr(bal)} (opening − paid; salary not included)
+                      </span>
                     </p>
                   );
                 })()}
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  window.location.href = `/payouts?driver=${encodeURIComponent(d.id)}`;
+                }}
+              >
+                <List className="size-3.5" /> Transactions
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => {
