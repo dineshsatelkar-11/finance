@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/bank")({ component: BankPage });
 
-/** Parse opening balance; allows negative (OD / overdrawn). */
 function parseOpening(raw: string): number {
   const n = Number(String(raw).replace(/,/g, "").trim());
   if (!Number.isFinite(n)) return 0;
@@ -58,7 +57,9 @@ function BankPage() {
     const map = new Map<string, number>();
     const add = (id: string, amt: number) => map.set(id, (map.get(id) || 0) + amt);
     for (const r of payouts) {
-      if (r.status === "paid" && r.date.startsWith(month)) add(r.bankAccountId, r.amount);
+      if (r.status === "paid" && r.date.startsWith(month) && r.kind !== "return") {
+        add(r.bankAccountId, r.amount);
+      }
     }
     for (const r of expenses) {
       if (r.status === "paid" && r.date.startsWith(month)) add(r.bankAccountId, r.amount);
@@ -71,13 +72,17 @@ function BankPage() {
 
   const inByBank = useMemo(() => {
     const map = new Map<string, number>();
+    const add = (id: string, amt: number) => map.set(id, (map.get(id) || 0) + amt);
     for (const r of receipts) {
-      if (r.status === "paid" && r.date.startsWith(month)) {
-        map.set(r.bankAccountId, (map.get(r.bankAccountId) || 0) + r.amount);
+      if (r.status === "paid" && r.date.startsWith(month)) add(r.bankAccountId, r.amount);
+    }
+    for (const r of payouts) {
+      if (r.status === "paid" && r.date.startsWith(month) && r.kind === "return") {
+        add(r.bankAccountId, r.amount);
       }
     }
     return map;
-  }, [receipts, month]);
+  }, [receipts, payouts, month]);
 
   type LedgerRow = {
     id: string;
@@ -93,12 +98,15 @@ function BankPage() {
 
     for (const r of payouts) {
       if (r.status !== "paid" || !inScope(r.date) || !forBank(r.bankAccountId)) continue;
+      const isReturn = r.kind === "return";
       rows.push({
         id: r.id,
         date: r.date,
-        kind: "out",
+        kind: isReturn ? "in" : "out",
         label: `${drivers.find((d) => d.id === r.driverId)?.name || "Driver"} · ${String(r.kind).replace("_", " ")}`,
-        sub: `Payout · ${r.mode.toUpperCase()}`,
+        sub: isReturn
+          ? `Return credit · ${r.mode.toUpperCase()}`
+          : `Payout · ${r.mode.toUpperCase()}`,
         amount: r.amount,
       });
     }
@@ -382,7 +390,7 @@ function BankPage() {
             <CardTitle>{selectedBank ? `${selectedBank.name} transactions` : "Ledger"}</CardTitle>
             <CardHint>
               {selectedBank
-                ? "All transactions for this account. Transfers show as − on source and + on destination."
+                ? "Returns credit this account (+). Transfers − on source / + on destination."
                 : "This month across all accounts. Tap a bank card to filter."}
             </CardHint>
           </div>
@@ -395,9 +403,7 @@ function BankPage() {
         <ul className="mt-4 divide-y divide-line">
           {ledgerRows.length === 0 ? (
             <li className="py-6 text-center text-sm text-muted">
-              {selectedBank
-                ? "No transactions linked to this account yet."
-                : "No transactions this month."}
+              {selectedBank ? "No transactions linked to this account yet." : "No transactions this month."}
             </li>
           ) : (
             ledgerRows.map((r) => (
