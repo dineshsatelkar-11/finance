@@ -118,10 +118,15 @@ export function effectiveRent(
 }
 
 /**
- * Running balance vs driver (no this-month salary — salary is settled at month end).
- * opening − paid (salary/advance/bonus/extra) + fines − returns.
- * Positive = company still owes from opening; negative = overpaid / driver owes.
- * leaveDays kept for call-site compatibility; not used in the formula.
+ * Running balance vs driver (opening / advances only).
+ *
+ * - Advance: reduces balance (money given early against what we owe).
+ * - Salary, extra_route, bonus: work payments — recorded as payouts but do NOT
+ *   settle the opening/advance balance (salary at month end; extra route = extra work pay).
+ * - Fine: driver owes company → increases what they owe (balance down if positive).
+ * - Return: driver returns cash → reduces what company paid as advance.
+ *
+ * Positive = company still owes from opening; negative = over-advanced / driver owes.
  */
 export function driverBalance(
   driver: { id: string; kind?: string; baseSalary?: number; dailyRate?: number; openingBalance?: number },
@@ -130,14 +135,15 @@ export function driverBalance(
   _leaveDays = 0,
 ) {
   const opening = Number(driver.openingBalance) || 0;
-  let paidToDriver = 0;
+  let advances = 0;
   let fine = 0;
   let returned = 0;
   for (const p of payouts) {
     if (p.driverId !== driver.id || !p.date.startsWith(month) || p.status !== "paid") continue;
     if (p.kind === "fine") fine += p.amount;
     else if (p.kind === "return") returned += p.amount;
-    else paidToDriver += p.amount;
+    else if (p.kind === "advance") advances += p.amount;
+    // salary | extra_route | bonus — work pay, not against opening balance
   }
-  return Math.round((opening - paidToDriver + fine - returned) * 100) / 100;
+  return Math.round((opening - advances + fine - returned) * 100) / 100;
 }
