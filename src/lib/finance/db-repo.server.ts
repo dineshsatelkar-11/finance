@@ -57,19 +57,22 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
     expenses,
     receipts,
     rentPayments,
-    loanPayments,
     attendances,
     rentWaivers,
+    loanPayments,
   ] = await Promise.all([
-    sql.query(`select id, name, account_name, account_no, ifsc, opening_balance, is_default, note from banks order by name`),
-    sql.query(`select id, name, vehicle_no, active, monthly_rent, note from fleets order by name`),
+    sql.query(`select id, name, is_default, opening from banks order by name`),
     sql.query(
-      `select id, name, bank, account_no, ifsc, principal, emi_amount, emi_day, total_emis,
-              outstanding, start_date, active, note from loans order by name`,
+      `select id, name, reg_no, kind, monthly_rent, active, loan_id, note from fleets order by name`,
     ),
     sql.query(
-      `select id, name, mobile, kind, base_salary, daily_rate, opening_balance, active,
-              upi_vpa, upi_payee_name, upi_updated_at, fleet_id, note from drivers order by name`,
+      `select id, name, bank, account_no, ifsc, principal, emi_amount, emi_day, total_emis,
+              start_date, end_date, interest_rate, outstanding, pending_emis, status, fleet_id, note
+       from loans order by name`,
+    ),
+    sql.query(
+      `select id, name, mobile, kind, base_salary, daily_rate, opening_balance, active, upi_vpa, upi_payee_name,
+              upi_updated_at, fleet_id, note from drivers order by name`,
     ),
     sql.query(`select id, name, upi_vpa, upi_payee_name from vendors order by name`),
     sql.query(`select id, name, mobile, note from customers order by name`),
@@ -89,12 +92,12 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
       `select id, fleet_id, driver_id, amount, date, for_month, mode, status, note, created_at
        from rent_payments order by date desc, created_at desc`,
     ),
+    sql.query(`select id, driver_id, month, leave_days, note from attendances`),
+    sql.query(`select id, fleet_id, month, breakdown_days, amount, note from rent_waivers`),
     sql.query(
       `select id, loan_id, kind, amount, date, mode, status, bank_account_id, note, created_at
        from loan_payments order by date desc, created_at desc`,
     ),
-    sql.query(`select id, driver_id, month, leave_days, note from attendances`),
-    sql.query(`select id, fleet_id, month, breakdown_days, amount, note from rent_waivers`),
   ]);
 
   return {
@@ -102,21 +105,19 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
       (r): BankAccount => ({
         id: str(r.id),
         name: str(r.name),
-        accountName: str(r.account_name),
-        accountNo: str(r.account_no),
-        ifsc: str(r.ifsc),
-        openingBalance: num(r.opening_balance),
         isDefault: bool(r.is_default),
-        note: str(r.note),
+        opening: num(r.opening),
       }),
     ),
     fleets: fleets.map(
       (r): Fleet => ({
         id: str(r.id),
         name: str(r.name),
-        vehicleNo: str(r.vehicle_no),
-        active: bool(r.active),
+        regNo: str(r.reg_no),
+        kind: str(r.kind) as Fleet["kind"],
         monthlyRent: num(r.monthly_rent),
+        active: bool(r.active),
+        loanId: r.loan_id ? str(r.loan_id) : null,
         note: str(r.note),
       }),
     ),
@@ -131,9 +132,13 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
         emiAmount: num(r.emi_amount),
         emiDay: num(r.emi_day),
         totalEmis: num(r.total_emis),
-        outstanding: num(r.outstanding),
         startDate: dateStr(r.start_date),
-        active: bool(r.active),
+        endDate: dateStr(r.end_date),
+        interestRate: num(r.interest_rate),
+        outstanding: num(r.outstanding),
+        pendingEmis: num(r.pending_emis),
+        status: str(r.status) as Loan["status"],
+        fleetId: r.fleet_id ? str(r.fleet_id) : null,
         note: str(r.note),
       }),
     ),
@@ -150,7 +155,7 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
         upiVpa: str(r.upi_vpa),
         upiPayeeName: str(r.upi_payee_name),
         upiUpdatedAt: isoOrNull(r.upi_updated_at),
-        fleetId: str(r.fleet_id) || null,
+        fleetId: r.fleet_id ? str(r.fleet_id) : null,
         note: str(r.note),
       }),
     ),
@@ -188,7 +193,7 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
     expenses: expenses.map(
       (r): Expense => ({
         id: str(r.id),
-        category: str(r.category) as Expense["category"],
+        category: str(r.category),
         vendor: str(r.vendor),
         amount: num(r.amount),
         date: dateStr(r.date),
@@ -196,7 +201,7 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
         status: str(r.status) as Expense["status"],
         bankAccountId: str(r.bank_account_id),
         upiVpa: str(r.upi_vpa),
-        fleetId: str(r.fleet_id) || null,
+        fleetId: r.fleet_id ? str(r.fleet_id) : null,
         note: str(r.note),
         createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
       }),
@@ -211,7 +216,7 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
         mode: str(r.mode) as Receipt["mode"],
         status: str(r.status) as Receipt["status"],
         bankAccountId: str(r.bank_account_id),
-        fleetId: str(r.fleet_id) || null,
+        fleetId: r.fleet_id ? str(r.fleet_id) : null,
         note: str(r.note),
         createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
       }),
@@ -226,20 +231,6 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
         forMonth: str(r.for_month),
         mode: str(r.mode) as RentPayment["mode"],
         status: str(r.status) as RentPayment["status"],
-        note: str(r.note),
-        createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
-      }),
-    ),
-    loanPayments: loanPayments.map(
-      (r): LoanPayment => ({
-        id: str(r.id),
-        loanId: str(r.loan_id),
-        kind: str(r.kind) as LoanPayment["kind"],
-        amount: num(r.amount),
-        date: dateStr(r.date),
-        mode: str(r.mode) as LoanPayment["mode"],
-        status: str(r.status) as LoanPayment["status"],
-        bankAccountId: str(r.bank_account_id),
         note: str(r.note),
         createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
       }),
@@ -263,53 +254,62 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
         note: str(r.note),
       }),
     ),
+    loanPayments: loanPayments.map(
+      (r): LoanPayment => ({
+        id: str(r.id),
+        loanId: str(r.loan_id),
+        kind: str(r.kind) as LoanPayment["kind"],
+        amount: num(r.amount),
+        date: dateStr(r.date),
+        mode: str(r.mode) as LoanPayment["mode"],
+        status: str(r.status) as LoanPayment["status"],
+        bankAccountId: str(r.bank_account_id),
+        note: str(r.note),
+        createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
+      }),
+    ),
   };
 }
 
 export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> {
   const sql = await getSql();
-  // Replace-all strategy (single-tenant desk).
-  const wipe = [
-    "loan_payments",
-    "rent_waivers",
-    "attendances",
-    "rent_payments",
-    "receipts",
-    "expenses",
-    "payouts",
-    "customers",
-    "vendors",
-    "drivers",
-    "loans",
-    "fleets",
-    "banks",
-  ];
-  for (const t of wipe) {
-    await sql.query(`delete from ${t}`);
-  }
+  // Full replace (single-tenant desk)
+  await sql.query(`delete from loan_payments`);
+  await sql.query(`delete from rent_waivers`);
+  await sql.query(`delete from attendances`);
+  await sql.query(`delete from rent_payments`);
+  await sql.query(`delete from receipts`);
+  await sql.query(`delete from expenses`);
+  await sql.query(`delete from payouts`);
+  await sql.query(`delete from customers`);
+  await sql.query(`delete from vendors`);
+  await sql.query(`delete from drivers`);
+  await sql.query(`delete from loans`);
+  await sql.query(`delete from fleets`);
+  await sql.query(`delete from banks`);
 
   for (const b of snap.banks) {
     await sql.query(
-      `insert into banks (id, name, account_name, account_no, ifsc, opening_balance, is_default, note)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [b.id, b.name, b.accountName, b.accountNo, b.ifsc, b.openingBalance, b.isDefault, b.note],
+      `insert into banks (id, name, is_default, opening) values ($1, $2, $3, $4)`,
+      [b.id, b.name, b.isDefault, b.opening],
     );
   }
   for (const f of snap.fleets) {
     await sql.query(
-      `insert into fleets (id, name, vehicle_no, active, monthly_rent, note) values ($1,$2,$3,$4,$5,$6)`,
-      [f.id, f.name, f.vehicleNo, f.active, f.monthlyRent, f.note],
+      `insert into fleets (id, name, reg_no, kind, monthly_rent, active, loan_id, note)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [f.id, f.name, f.regNo, f.kind, f.monthlyRent, f.active, f.loanId, f.note],
     );
   }
   for (const l of snap.loans) {
     await sql.query(
       `insert into loans (
         id, name, bank, account_no, ifsc, principal, emi_amount, emi_day, total_emis,
-        outstanding, start_date, active, note
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        start_date, end_date, interest_rate, outstanding, pending_emis, status, fleet_id, note
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
       [
         l.id, l.name, l.bank, l.accountNo, l.ifsc, l.principal, l.emiAmount, l.emiDay, l.totalEmis,
-        l.outstanding, l.startDate || null, l.active, l.note,
+        l.startDate, l.endDate, l.interestRate, l.outstanding, l.pendingEmis, l.status, l.fleetId, l.note,
       ],
     );
   }
