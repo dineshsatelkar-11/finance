@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,11 @@ function BankPage() {
   const upsertBank = useFinance((s) => s.upsertBank);
   const removeBank = useFinance((s) => s.removeBank);
   const setDefaultBank = useFinance((s) => s.setDefaultBank);
+  const removePayout = useFinance((s) => s.removePayout);
+  const removeExpense = useFinance((s) => s.removeExpense);
+  const removeReceipt = useFinance((s) => s.removeReceipt);
+  const removeLoanPayment = useFinance((s) => s.removeLoanPayment);
+  const removeBankTransfer = useFinance((s) => s.removeBankTransfer);
   const [selectedBankId, setSelectedBankId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -84,8 +89,12 @@ function BankPage() {
     return map;
   }, [receipts, payouts, month]);
 
+  type LedgerSource = "payout" | "expense" | "loan" | "receipt" | "xfer";
+
   type LedgerRow = {
     id: string;
+    sourceId: string;
+    source: LedgerSource;
     date: string;
     kind: "out" | "in" | "xfer";
     label: string;
@@ -101,6 +110,8 @@ function BankPage() {
       const isReturn = r.kind === "return";
       rows.push({
         id: r.id,
+        sourceId: r.id,
+        source: "payout",
         date: r.date,
         kind: isReturn ? "in" : "out",
         label: `${drivers.find((d) => d.id === r.driverId)?.name || "Driver"} · ${String(r.kind).replace("_", " ")}`,
@@ -114,6 +125,8 @@ function BankPage() {
       if (r.status !== "paid" || !inScope(r.date) || !forBank(r.bankAccountId)) continue;
       rows.push({
         id: r.id,
+        sourceId: r.id,
+        source: "expense",
         date: r.date,
         kind: "out",
         label: `${r.category}${r.vendor && r.vendor !== "General" ? ` · ${r.vendor}` : ""}`,
@@ -126,6 +139,8 @@ function BankPage() {
       const loan = loans.find((l) => l.id === r.loanId);
       rows.push({
         id: r.id,
+        sourceId: r.id,
+        source: "loan",
         date: r.date,
         kind: "out",
         label: `${loan?.name || "Loan"} · ${String(r.kind).replace("_", " ")}`,
@@ -137,6 +152,8 @@ function BankPage() {
       if (r.status !== "paid" || !inScope(r.date) || !forBank(r.bankAccountId)) continue;
       rows.push({
         id: r.id,
+        sourceId: r.id,
+        source: "receipt",
         date: r.date,
         kind: "in",
         label: r.customerName || "Receipt",
@@ -158,6 +175,8 @@ function BankPage() {
       if (selectedBankId === x.fromBankId) {
         rows.push({
           id: `${x.id}_out`,
+          sourceId: x.id,
+          source: "xfer",
           date: x.date,
           kind: "out",
           label: `Transfer to ${toName}`,
@@ -167,6 +186,8 @@ function BankPage() {
       } else if (selectedBankId === x.toBankId) {
         rows.push({
           id: `${x.id}_in`,
+          sourceId: x.id,
+          source: "xfer",
           date: x.date,
           kind: "in",
           label: `Transfer from ${fromName}`,
@@ -176,6 +197,8 @@ function BankPage() {
       } else {
         rows.push({
           id: x.id,
+          sourceId: x.id,
+          source: "xfer",
           date: x.date,
           kind: "xfer",
           label: `Transfer · ${fromName} → ${toName}`,
@@ -204,6 +227,31 @@ function BankPage() {
     selectedBankId,
     month,
   ]);
+
+  function deleteLedgerRow(r: LedgerRow) {
+    const msg =
+      r.source === "xfer"
+        ? `Delete transfer ${inr(r.amount)}? Both sides (debit and credit) will be removed.`
+        : `Delete ${r.label} · ${inr(r.amount)}?`;
+    if (!window.confirm(msg)) return;
+    if (r.source === "payout") {
+      removePayout(r.sourceId);
+      toast.message("Driver transaction deleted");
+    } else if (r.source === "expense") {
+      removeExpense(r.sourceId);
+      toast.message("Expense deleted");
+    } else if (r.source === "receipt") {
+      removeReceipt(r.sourceId);
+      toast.message("Receipt deleted");
+    } else if (r.source === "loan") {
+      removeLoanPayment(r.sourceId);
+      toast.message("Loan payment deleted");
+    } else if (r.source === "xfer") {
+      const res = removeBankTransfer(r.sourceId);
+      if (!res.ok) toast.error(res.error);
+      else toast.message("Bank transfer deleted");
+    }
+  }
 
   function openAdd() {
     setEditId(null);
@@ -390,7 +438,7 @@ function BankPage() {
             <CardTitle>{selectedBank ? `${selectedBank.name} transactions` : "Ledger"}</CardTitle>
             <CardHint>
               {selectedBank
-                ? "Returns credit this account (+). Transfers − on source / + on destination."
+                ? "Trash deletes the entry. Transfer delete removes both debit and credit."
                 : "This month across all accounts. Tap a bank card to filter."}
             </CardHint>
           </div>
@@ -408,23 +456,38 @@ function BankPage() {
           ) : (
             ledgerRows.map((r) => (
               <li key={r.id} className="flex items-center justify-between gap-2 py-3 text-sm">
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="font-medium capitalize">{r.label}</div>
                   <div className="text-[12px] text-muted">
                     {shortDate(r.date)} · {r.sub}
                   </div>
                 </div>
-                <div
-                  className={
-                    r.kind === "in"
-                      ? "tabular-nums text-ok"
-                      : r.kind === "xfer"
-                        ? "tabular-nums text-muted"
-                        : "tabular-nums text-danger"
-                  }
-                >
-                  {r.kind === "xfer" ? "↔" : r.kind === "in" ? "+" : "−"}
-                  {inr(r.amount)}
+                <div className="flex shrink-0 items-center gap-2">
+                  <div
+                    className={
+                      r.kind === "in"
+                        ? "tabular-nums text-ok"
+                        : r.kind === "xfer"
+                          ? "tabular-nums text-muted"
+                          : "tabular-nums text-danger"
+                    }
+                  >
+                    {r.kind === "xfer" ? "↔" : r.kind === "in" ? "+" : "−"}
+                    {inr(r.amount)}
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-2"
+                    title="Delete"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteLedgerRow(r);
+                    }}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
                 </div>
               </li>
             ))
