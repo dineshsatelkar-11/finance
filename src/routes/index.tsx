@@ -63,7 +63,7 @@ function Overview() {
         <div>
           <h1 className="font-display text-3xl font-medium tracking-tight text-ink">Overview</h1>
           <p className="mt-1 max-w-xl text-sm text-muted">
-            Driver balances, UPI on file, and cash movement for IBCAB operations.
+            Driver balances and cash movement for IBCAB operations.
           </p>
         </div>
         <label className="text-sm text-muted">
@@ -130,18 +130,17 @@ function Overview() {
       ) : null}
 
       {missingUpi.length > 0 ? (
-        <div className="flex gap-3 rounded-lg border border-warn/25 bg-warn-soft px-4 py-3">
-          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warn" />
+        <div className="flex gap-3 rounded-lg border border-line bg-raised px-4 py-3">
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-warn">
-              {missingUpi.length} driver{missingUpi.length > 1 ? "s" : ""} missing a UPI ID
+            <div className="text-sm font-medium text-ink">
+              Optional: add UPI for {missingUpi.map((d) => d.name).join(", ")}
             </div>
-            <p className="mt-1 text-[13px] text-warn/90">
-              {missingUpi.map((d) => d.name).join(", ")} — add UPI on the driver record, then pay.
+            <p className="mt-1 text-[13px] text-muted">
+              One-time — when you pay, you can save UPI on the driver. Not required on cards.
             </p>
-            <Button asChild variant="outline" size="sm" className="mt-3 border-warn/30 bg-panel">
+            <Button asChild variant="outline" size="sm" className="mt-3">
               <Link to="/drivers">
-                Fix UPI IDs <ArrowUpRight className="size-4" />
+                Drivers <ArrowUpRight className="size-4" />
               </Link>
             </Button>
           </div>
@@ -167,10 +166,10 @@ function Overview() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{d.name}</span>
-                        {d.upiVpa ? <Badge tone="ok">UPI</Badge> : <Badge tone="warn">No UPI</Badge>}
+                        {d.upiVpa ? <Badge tone="ok">UPI</Badge> : null}
                       </div>
                       <div className="truncate text-[12px] text-muted">
-                        {d.upiVpa ? maskVpa(d.upiVpa) : "Add UPI before paying"}
+                        {d.upiVpa ? maskVpa(d.upiVpa) : "—"}
                       </div>
                     </div>
                     <a
