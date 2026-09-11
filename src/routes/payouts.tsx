@@ -22,7 +22,7 @@ function PayoutsPage() {
   const updatePayout = useFinance((s) => s.updatePayout);
   const removePayout = useFinance((s) => s.removePayout);
   const clearHeldOrFailedPayouts = useFinance((s) => s.clearHeldOrFailedPayouts);
-  const markPaid = useFinance((s) => s.markPaid);
+  const setPayoutStatus = useFinance((s) => s.setPayoutStatus);
 
   const search =
     typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
@@ -165,7 +165,7 @@ function PayoutsPage() {
                       type="button"
                       size="sm"
                       onClick={() => {
-                        markPaid(p.id);
+                        setPayoutStatus(p.id, "paid");
                         toast.success("Marked paid");
                       }}
                     >
