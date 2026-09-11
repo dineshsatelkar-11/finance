@@ -28,6 +28,9 @@ function BankPage() {
   const banks = useFinance((s) => s.banks);
   const payouts = useFinance((s) => s.payouts);
   const expenses = useFinance((s) => s.expenses);
+  const receipts = useFinance((s) => s.receipts);
+  const loanPayments = useFinance((s) => s.loanPayments);
+  const loans = useFinance((s) => s.loans);
   const drivers = useFinance((s) => s.drivers);
   const bankTransfers = useFinance((s) => s.bankTransfers ?? []);
   const upsertBank = useFinance((s) => s.upsertBank);
@@ -40,44 +43,141 @@ function BankPage() {
   const [opening, setOpening] = useState("0");
   const [clearing, setClearing] = useState(false);
 
-  const paidOut = [...payouts, ...expenses].filter(
-    (r) => r.status === "paid" && r.date.startsWith(month),
-  );
   const selectedBank = banks.find((b) => b.id === selectedBankId) || null;
 
+  /** Month filter only when viewing all banks; selected account shows full history. */
+  function inScope(date: string) {
+    if (selectedBankId) return true;
+    return date.startsWith(month);
+  }
+
+  function forBank(bankAccountId: string) {
+    return !selectedBankId || bankAccountId === selectedBankId;
+  }
+
+  /** Outflow this month per bank (payouts + expenses + loan EMIs). */
+  const outByBank = useMemo(() => {
+    const map = new Map<string, number>();
+    const add = (id: string, amt: number) => map.set(id, (map.get(id) || 0) + amt);
+    for (const r of payouts) {
+      if (r.status === "paid" && r.date.startsWith(month)) add(r.bankAccountId, r.amount);
+    }
+    for (const r of expenses) {
+      if (r.status === "paid" && r.date.startsWith(month)) add(r.bankAccountId, r.amount);
+    }
+    for (const r of loanPayments) {
+      if (r.status === "paid" && r.date.startsWith(month)) add(r.bankAccountId, r.amount);
+    }
+    return map;
+  }, [payouts, expenses, loanPayments, month]);
+
+  const inByBank = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of receipts) {
+      if (r.status === "paid" && r.date.startsWith(month)) {
+        map.set(r.bankAccountId, (map.get(r.bankAccountId) || 0) + r.amount);
+      }
+    }
+    return map;
+  }, [receipts, month]);
+
+  type LedgerRow = {
+    id: string;
+    date: string;
+    kind: "out" | "in" | "xfer";
+    label: string;
+    sub: string;
+    amount: number;
+  };
+
   const ledgerRows = useMemo(() => {
-    const outs = paidOut
-      .filter((r) => !selectedBankId || r.bankAccountId === selectedBankId)
-      .map((r) => ({
+    const rows: LedgerRow[] = [];
+
+    for (const r of payouts) {
+      if (r.status !== "paid" || !inScope(r.date) || !forBank(r.bankAccountId)) continue;
+      rows.push({
         id: r.id,
         date: r.date,
-        kind: "out" as const,
-        label:
-          "kind" in r
-            ? `${drivers.find((d) => d.id === r.driverId)?.name || "Driver"} · ${String(r.kind).replace("_", " ")}`
-            : `${r.category} · ${r.vendor}`,
-        sub: r.mode.toUpperCase(),
+        kind: "out",
+        label: `${drivers.find((d) => d.id === r.driverId)?.name || "Driver"} · ${String(r.kind).replace("_", " ")}`,
+        sub: `Payout · ${r.mode.toUpperCase()}`,
         amount: r.amount,
-      }));
-    const xfers = bankTransfers
-      .filter(
-        (x) =>
-          !selectedBankId || x.fromBankId === selectedBankId || x.toBankId === selectedBankId,
-      )
-      .map((x) => {
-        const fromName = banks.find((b) => b.id === x.fromBankId)?.name || "From";
-        const toName = banks.find((b) => b.id === x.toBankId)?.name || "To";
-        return {
-          id: x.id,
-          date: x.date,
-          kind: "xfer" as const,
-          label: `Transfer · ${fromName} → ${toName}`,
-          sub: x.note || "Internal",
-          amount: x.amount,
-        };
       });
-    return [...outs, ...xfers].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 40);
-  }, [paidOut, bankTransfers, banks, drivers, selectedBankId]);
+    }
+    for (const r of expenses) {
+      if (r.status !== "paid" || !inScope(r.date) || !forBank(r.bankAccountId)) continue;
+      rows.push({
+        id: r.id,
+        date: r.date,
+        kind: "out",
+        label: `${r.category}${r.vendor && r.vendor !== "General" ? ` · ${r.vendor}` : ""}`,
+        sub: `Expense · ${r.mode.toUpperCase()}`,
+        amount: r.amount,
+      });
+    }
+    for (const r of loanPayments) {
+      if (r.status !== "paid" || !inScope(r.date) || !forBank(r.bankAccountId)) continue;
+      const loan = loans.find((l) => l.id === r.loanId);
+      rows.push({
+        id: r.id,
+        date: r.date,
+        kind: "out",
+        label: `${loan?.name || "Loan"} · ${String(r.kind).replace("_", " ")}`,
+        sub: `Loan · ${r.mode.toUpperCase()}`,
+        amount: r.amount,
+      });
+    }
+    for (const r of receipts) {
+      if (r.status !== "paid" || !inScope(r.date) || !forBank(r.bankAccountId)) continue;
+      rows.push({
+        id: r.id,
+        date: r.date,
+        kind: "in",
+        label: r.customerName || "Receipt",
+        sub: `In · ${r.mode.toUpperCase()}`,
+        amount: r.amount,
+      });
+    }
+    for (const x of bankTransfers) {
+      if (!inScope(x.date)) continue;
+      if (
+        selectedBankId &&
+        x.fromBankId !== selectedBankId &&
+        x.toBankId !== selectedBankId
+      ) {
+        continue;
+      }
+      const fromName = banks.find((b) => b.id === x.fromBankId)?.name || "From";
+      const toName = banks.find((b) => b.id === x.toBankId)?.name || "To";
+      rows.push({
+        id: x.id,
+        date: x.date,
+        kind: "xfer",
+        label: `Transfer · ${fromName} \u2192 ${toName}`,
+        sub: x.note || "Internal",
+        amount: x.amount,
+      });
+    }
+
+    return rows
+      .sort((a, b) => {
+        const d = b.date.localeCompare(a.date);
+        if (d !== 0) return d;
+        return b.id.localeCompare(a.id);
+      })
+      .slice(0, selectedBankId ? 80 : 40);
+  }, [
+    payouts,
+    expenses,
+    loanPayments,
+    receipts,
+    bankTransfers,
+    banks,
+    drivers,
+    loans,
+    selectedBankId,
+    month,
+  ]);
 
   function openAdd() {
     setEditId(null);
@@ -161,7 +261,7 @@ function BankPage() {
               />
             </div>
             <div>
-              <Label>Opening balance (₹)</Label>
+              <Label>Opening balance (\u20b9)</Label>
               <Input
                 type="number"
                 inputMode="decimal"
@@ -171,7 +271,7 @@ function BankPage() {
                 placeholder="0 or -5000 for OD"
               />
               <p className="mt-1 text-[11px] text-muted">
-                Negative allowed — e.g. overdraft or starting overdrawn.
+                Negative allowed \u2014 e.g. overdraft or starting overdrawn.
               </p>
             </div>
             <Button type="button" className="w-full" onClick={saveBank}>
@@ -183,8 +283,9 @@ function BankPage() {
 
       <div className="grid gap-3 sm:grid-cols-2">
         {banks.map((b) => {
-          const out = paidOut.filter((r) => r.bankAccountId === b.id).reduce((s, r) => s + r.amount, 0);
-          const bal = b.opening - out;
+          const out = outByBank.get(b.id) || 0;
+          const inn = inByBank.get(b.id) || 0;
+          const bal = b.opening - out + inn;
           const selected = selectedBankId === b.id;
           return (
             <Card
@@ -228,7 +329,7 @@ function BankPage() {
               </div>
               <CardHint>
                 Opening {inr(b.opening)}
-                {b.opening < 0 ? " (OD)" : ""} · tap for transactions
+                {b.opening < 0 ? " (OD)" : ""} \u00b7 tap for transactions
               </CardHint>
               <div
                 className={cn(
@@ -238,7 +339,10 @@ function BankPage() {
               >
                 {inr(bal)}
               </div>
-              <p className="mt-1 text-[12px] text-muted">Out this month {inr(out)}</p>
+              <p className="mt-1 text-[12px] text-muted">
+                Out {inr(out)}
+                {inn > 0 ? ` \u00b7 In ${inr(inn)}` : ""} this month
+              </p>
             </Card>
           );
         })}
@@ -260,8 +364,8 @@ function BankPage() {
             <CardTitle>{selectedBank ? `${selectedBank.name} transactions` : "Ledger"}</CardTitle>
             <CardHint>
               {selectedBank
-                ? "Filtered to this account. Tap card again to show all."
-                : "Tap a bank card to filter."}
+                ? "All transactions for this account (payouts, expenses, EMIs, receipts, transfers). Tap card again to show all banks."
+                : "This month across all accounts. Tap a bank card to filter."}
             </CardHint>
           </div>
           {selectedBankId ? (
@@ -272,18 +376,30 @@ function BankPage() {
         </div>
         <ul className="mt-4 divide-y divide-line">
           {ledgerRows.length === 0 ? (
-            <li className="py-6 text-center text-sm text-muted">No transactions yet.</li>
+            <li className="py-6 text-center text-sm text-muted">
+              {selectedBank
+                ? "No transactions linked to this account yet. Payouts/expenses/EMIs must use this bank when recording."
+                : "No transactions this month."}
+            </li>
           ) : (
             ledgerRows.map((r) => (
               <li key={r.id} className="flex items-center justify-between gap-2 py-3 text-sm">
                 <div>
                   <div className="font-medium capitalize">{r.label}</div>
                   <div className="text-[12px] text-muted">
-                    {shortDate(r.date)} · {r.sub}
+                    {shortDate(r.date)} \u00b7 {r.sub}
                   </div>
                 </div>
-                <div className={r.kind === "xfer" ? "tabular-nums text-muted" : "tabular-nums text-danger"}>
-                  {r.kind === "xfer" ? "↔" : "−"}
+                <div
+                  className={
+                    r.kind === "in"
+                      ? "tabular-nums text-ok"
+                      : r.kind === "xfer"
+                        ? "tabular-nums text-muted"
+                        : "tabular-nums text-danger"
+                  }
+                >
+                  {r.kind === "xfer" ? "\u2194" : r.kind === "in" ? "+" : "\u2212"}
                   {inr(r.amount)}
                 </div>
               </li>
@@ -304,7 +420,7 @@ function BankPage() {
           else window.alert("Cleared.");
         }}
       >
-        {clearing ? "Clearing…" : "Clear all data"}
+        {clearing ? "Clearing\u2026" : "Clear all data"}
       </Button>
     </div>
   );
