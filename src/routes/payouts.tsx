@@ -59,7 +59,13 @@ function PayoutsPage() {
     return payouts
       .filter((p) => p.date.startsWith(month))
       .filter((p) => (filter === "all" ? true : p.status === filter))
-      .filter((p) => (driverFilter ? p.driverId === driverFilter : true));
+      .filter((p) => (driverFilter ? p.driverId === driverFilter : true))
+      .slice()
+      .sort((a, b) => {
+        const d = b.date.localeCompare(a.date);
+        if (d !== 0) return d;
+        return (b.createdAt || "").localeCompare(a.createdAt || "");
+      });
   }, [payouts, month, filter, driverFilter]);
 
   const missing = drivers.filter((d) => d.active && !d.upiVpa);
