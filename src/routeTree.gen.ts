@@ -18,6 +18,8 @@ import { Route as FleetsRouteImport } from './routes/fleets'
 import { Route as LoansRouteImport } from './routes/loans'
 import { Route as ReceiptsRouteImport } from './routes/receipts'
 import { Route as RentRouteImport } from './routes/rent'
+import { Route as ManageDriversRouteImport } from './routes/manage-drivers'
+import { Route as StatementRouteImport } from './routes/statement'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -64,6 +66,16 @@ const RentRoute = RentRouteImport.update({
   path: '/rent',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ManageDriversRoute = ManageDriversRouteImport.update({
+  id: '/manage-drivers',
+  path: '/manage-drivers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StatementRoute = StatementRouteImport.update({
+  id: '/statement',
+  path: '/statement',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -75,6 +87,8 @@ export interface FileRoutesByFullPath {
   '/loans': typeof LoansRoute
   '/receipts': typeof ReceiptsRoute
   '/rent': typeof RentRoute
+  '/manage-drivers': typeof ManageDriversRoute
+  '/statement': typeof StatementRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -86,6 +100,8 @@ export interface FileRoutesByTo {
   '/loans': typeof LoansRoute
   '/receipts': typeof ReceiptsRoute
   '/rent': typeof RentRoute
+  '/manage-drivers': typeof ManageDriversRoute
+  '/statement': typeof StatementRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -96,13 +112,51 @@ export interface FileRoutesById {
   '/payouts': typeof PayoutsRoute
   '/fleets': typeof FleetsRoute
   '/loans': typeof LoansRoute
+  '/receipts': typeof ReceiptsRoute
+  '/rent': typeof RentRoute
+  '/manage-drivers': typeof ManageDriversRoute
+  '/statement': typeof StatementRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/bank' | '/drivers' | '/expenses' | '/payouts' | '/fleets' | '/loans' | '/receipts' | '/rent' | '/bank' | '/drivers' | '/expenses' | '/payouts' | '/fleets' | '/loans'
+  fullPaths:
+    | '/'
+    | '/bank'
+    | '/drivers'
+    | '/expenses'
+    | '/payouts'
+    | '/fleets'
+    | '/loans'
+    | '/receipts'
+    | '/rent'
+    | '/manage-drivers'
+    | '/statement'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/bank' | '/drivers' | '/expenses' | '/payouts' | '/fleets' | '/loans'
-  id: '__root__' | '/' | '/bank' | '/drivers' | '/expenses' | '/payouts' | '/fleets' | '/loans'
+  to:
+    | '/'
+    | '/bank'
+    | '/drivers'
+    | '/expenses'
+    | '/payouts'
+    | '/fleets'
+    | '/loans'
+    | '/receipts'
+    | '/rent'
+    | '/manage-drivers'
+    | '/statement'
+  id:
+    | '__root__'
+    | '/'
+    | '/bank'
+    | '/drivers'
+    | '/expenses'
+    | '/payouts'
+    | '/fleets'
+    | '/loans'
+    | '/receipts'
+    | '/rent'
+    | '/manage-drivers'
+    | '/statement'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -115,6 +169,8 @@ export interface RootRouteChildren {
   LoansRoute: typeof LoansRoute
   ReceiptsRoute: typeof ReceiptsRoute
   RentRoute: typeof RentRoute
+  ManageDriversRoute: typeof ManageDriversRoute
+  StatementRoute: typeof StatementRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -168,6 +224,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoansRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/receipts': {
+      id: '/receipts'
+      path: '/receipts'
+      fullPath: '/receipts'
+      preLoaderRoute: typeof ReceiptsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rent': {
+      id: '/rent'
+      path: '/rent'
+      fullPath: '/rent'
+      preLoaderRoute: typeof RentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manage-drivers': {
+      id: '/manage-drivers'
+      path: '/manage-drivers'
+      fullPath: '/manage-drivers'
+      preLoaderRoute: typeof ManageDriversRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/statement': {
+      id: '/statement'
+      path: '/statement'
+      fullPath: '/statement'
+      preLoaderRoute: typeof StatementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -181,6 +265,8 @@ const rootRouteChildren: RootRouteChildren = {
   LoansRoute: LoansRoute,
   ReceiptsRoute: ReceiptsRoute,
   RentRoute: RentRoute,
+  ManageDriversRoute: ManageDriversRoute,
+  StatementRoute: StatementRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
