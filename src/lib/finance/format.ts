@@ -28,11 +28,28 @@ export function inr(n: number) {
   }).format(Math.round(v));
 }
 
+export function inrCompact(n: number) {
+  const abs = Math.abs(n);
+  if (abs >= 100000) {
+    return `${n < 0 ? "−" : ""}₹${(abs / 100000).toFixed(abs >= 1000000 ? 1 : 2)}L`;
+  }
+  return inr(n);
+}
+
 export function shortDate(iso: string) {
   if (!iso) return "";
   const d = new Date(iso.length === 10 ? iso + "T12:00:00" : iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+export function monthLabel(ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  if (!y || !m) return ym;
+  return new Date(y, m - 1, 1).toLocaleString("en-IN", {
+    month: "long",
+    year: "numeric",
+  });
 }
 
 export function initials(name: string) {
@@ -46,6 +63,29 @@ export function daysInMonth(month: string) {
   const [y, m] = month.split("-").map(Number);
   if (!y || !m) return 30;
   return new Date(y, m, 0).getDate();
+}
+
+/** Normalize Indian mobile to digits; returns 91XXXXXXXXXX when possible. */
+export function waPhone(mobile: string) {
+  const d = String(mobile || "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.length === 10) return `91${d}`;
+  if (d.length === 12 && d.startsWith("91")) return d;
+  if (d.length === 11 && d.startsWith("0")) return `91${d.slice(1)}`;
+  return d;
+}
+
+/** Open WhatsApp chat with prefilled message. Empty mobile → wa.me share picker. */
+export function whatsappUrl(mobile: string, text: string) {
+  const phone = waPhone(mobile);
+  const q = encodeURIComponent(text);
+  return phone ? `https://wa.me/${phone}?text=${q}` : `https://wa.me/?text=${q}`;
+}
+
+export function openWhatsApp(mobile: string, text: string) {
+  const url = whatsappUrl(mobile, text);
+  if (typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer");
+  return url;
 }
 
 /** Suggested salary for the month after leave deduction. */
