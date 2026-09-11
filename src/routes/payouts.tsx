@@ -27,7 +27,7 @@ function PayoutsPage() {
   const search =
     typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const driverFilter = search?.get("driver") || "";
-  const statusFilter = search?.get("status") || "";
+  const statusFromUrl = search?.get("status") || "";
 
   const [payOpen, setPayOpen] = useState(false);
   const [payId, setPayId] = useState<string | null>(null);
@@ -35,19 +35,38 @@ function PayoutsPage() {
   const [editAmt, setEditAmt] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editNote, setEditNote] = useState("");
+  const [statusFilter, setStatusFilter] = useState(statusFromUrl);
+  const [kindFilter, setKindFilter] = useState("");
+
+  const STATUS_CHIPS = [
+    { id: "", label: "All" },
+    { id: "paid", label: "Paid" },
+    { id: "pending", label: "Pending" },
+    { id: "failed", label: "Failed" },
+  ] as const;
+  const KIND_CHIPS = [
+    { id: "", label: "All types" },
+    { id: "salary", label: "Salary" },
+    { id: "advance", label: "Advance" },
+    { id: "extra_route", label: "Extra route" },
+    { id: "bonus", label: "Bonus" },
+    { id: "fine", label: "Fine" },
+    { id: "return", label: "Return" },
+  ] as const;
 
   const rows = useMemo(() => {
     return payouts
       .filter((p) => p.date.startsWith(month))
       .filter((p) => !driverFilter || p.driverId === driverFilter)
       .filter((p) => !statusFilter || p.status === statusFilter)
+      .filter((p) => !kindFilter || p.kind === kindFilter)
       .slice()
       .sort((a, b) => {
         const d = b.date.localeCompare(a.date);
         if (d !== 0) return d;
         return (b.createdAt || "").localeCompare(a.createdAt || "");
       });
-  }, [payouts, month, driverFilter, statusFilter]);
+  }, [payouts, month, driverFilter, statusFilter, kindFilter]);
 
   const heldFailed = payouts.filter(
     (p) => p.date.startsWith(month) && (p.status === "pending" || p.status === "failed"),
@@ -124,10 +143,45 @@ function PayoutsPage() {
           </span>
           .{" "}
           <a href="/payouts" className="text-accent underline-offset-2 hover:underline">
-            Show all
+            Show all drivers
           </a>
         </p>
       ) : null}
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-1.5">
+          {STATUS_CHIPS.map((c) => (
+            <button
+              key={c.id || "all-status"}
+              type="button"
+              onClick={() => setStatusFilter(c.id)}
+              className={
+                statusFilter === c.id
+                  ? "rounded-full border border-accent bg-accent-soft px-3 py-1 text-[12px] font-medium text-accent"
+                  : "rounded-full border border-line bg-raised px-3 py-1 text-[12px] text-muted hover:text-ink"
+              }
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {KIND_CHIPS.map((c) => (
+            <button
+              key={c.id || "all-kind"}
+              type="button"
+              onClick={() => setKindFilter(c.id)}
+              className={
+                kindFilter === c.id
+                  ? "rounded-full border border-accent bg-accent-soft px-3 py-1 text-[12px] font-medium text-accent"
+                  : "rounded-full border border-line bg-raised px-3 py-1 text-[12px] text-muted hover:text-ink"
+              }
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="space-y-2">
         {rows.length === 0 ? (
