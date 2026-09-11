@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { defaultBankId, useFinance } from "@/lib/finance/store";
 import { inr, shortDate, todayISO, uid } from "@/lib/finance/format";
-import type { PayMode } from "@/lib/finance/types";
+import type { Expense, PayMode } from "@/lib/finance/types";
 import { maskVpa } from "@/lib/finance/upi";
 
 export const Route = createFileRoute("/expenses")({ component: ExpensesPage });
@@ -44,6 +44,11 @@ function ExpensesPage() {
   const [mode, setMode] = useState<PayMode>("upi");
   const [note, setNote] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [editRow, setEditRow] = useState<Expense | null>(null);
+  const [editAmt, setEditAmt] = useState("");
+  const [editDate, setEditDate] = useState(todayISO());
+  const [editNote, setEditNote] = useState("");
+  const [editCat, setEditCat] = useState("Fuel");
 
   const rows = useMemo(
     () =>
@@ -82,6 +87,35 @@ function ExpensesPage() {
     setMode("upi");
     setNote("");
     setAddOpen(true);
+  }
+
+  function openEditExpense(e: Expense) {
+    setEditRow(e);
+    setEditAmt(String(e.amount));
+    setEditDate(e.date || todayISO());
+    setEditNote(e.note || "");
+    setEditCat(e.category || "Other");
+  }
+
+  function saveEditExpense() {
+    if (!editRow) return;
+    const amt = parseFloat(editAmt);
+    if (!(amt > 0)) {
+      toast.error("Invalid amount");
+      return;
+    }
+    if (!editDate) {
+      toast.error("Date is required");
+      return;
+    }
+    updateExpense(editRow.id, {
+      amount: amt,
+      date: editDate,
+      note: editNote.trim(),
+      category: editCat,
+    });
+    toast.success("Expense updated");
+    setEditRow(null);
   }
 
   function save() {
@@ -271,18 +305,7 @@ function ExpensesPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      const raw = window.prompt("New amount (₹)", String(e.amount));
-                      if (raw == null) return;
-                      const amt = parseFloat(raw);
-                      if (!(amt > 0)) {
-                        toast.error("Invalid amount");
-                        return;
-                      }
-                      const n = window.prompt("Note", e.note || "") ?? e.note;
-                      updateExpense(e.id, { amount: amt, note: n || "" });
-                      toast.success("Expense updated");
-                    }}
+                    onClick={() => openEditExpense(e)}
                   >
                     <Pencil className="size-3.5" /> Edit
                   </Button>
@@ -304,6 +327,59 @@ function ExpensesPage() {
           })
         )}
       </div>
+
+      <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
+        <DialogContent title="Edit expense">
+          <div className="space-y-4 text-left">
+            <div className="space-y-1.5">
+              <Label>Category</Label>
+              <Select value={editCat} onValueChange={setEditCat}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATS.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-ex-amt">Amount (₹)</Label>
+              <Input
+                id="edit-ex-amt"
+                type="number"
+                inputMode="decimal"
+                className="tabular-nums"
+                value={editAmt}
+                onChange={(e) => setEditAmt(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-ex-date">Date</Label>
+              <Input
+                id="edit-ex-date"
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-ex-note">Note</Label>
+              <Input
+                id="edit-ex-note"
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
+              />
+            </div>
+            <Button type="button" className="w-full" onClick={saveEditExpense}>
+              Save changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <h2 className="font-display text-lg font-medium">Vendors</h2>
