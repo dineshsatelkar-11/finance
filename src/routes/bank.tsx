@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { Pencil } from "lucide-react";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,13 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/bank")({ component: BankPage });
 
+/** Parse opening balance; allows negative (OD / overdrawn). */
+function parseOpening(raw: string): number {
+  const n = Number(String(raw).replace(/,/g, "").trim());
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
+
 function BankPage() {
   const month = useFinance((s) => s.month);
   const banks = useFinance((s) => s.banks);
@@ -27,6 +35,7 @@ function BankPage() {
   const setDefaultBank = useFinance((s) => s.setDefaultBank);
   const [selectedBankId, setSelectedBankId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [opening, setOpening] = useState("0");
   const [clearing, setClearing] = useState(false);
@@ -70,17 +79,49 @@ function BankPage() {
     return [...outs, ...xfers].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 40);
   }, [paidOut, bankTransfers, banks, drivers, selectedBankId]);
 
+  function openAdd() {
+    setEditId(null);
+    setName("");
+    setOpening("0");
+    setOpen(true);
+  }
+
+  function openEdit(b: BankAccount) {
+    setEditId(b.id);
+    setName(b.name);
+    setOpening(String(b.opening ?? 0));
+    setOpen(true);
+  }
+
   function saveBank() {
     const n = name.trim();
-    if (!n) return;
-    upsertBank({
-      id: uid("bank"),
-      name: n,
-      opening: Math.round((Number(opening) || 0) * 100) / 100,
-      isDefault: banks.length === 0,
-    });
+    if (!n) {
+      toast.error("Account name required");
+      return;
+    }
+    const openingBal = parseOpening(opening);
+    if (editId) {
+      const existing = banks.find((b) => b.id === editId);
+      upsertBank({
+        id: editId,
+        name: n,
+        opening: openingBal,
+        isDefault: existing?.isDefault ?? false,
+      });
+      toast.success("Bank updated");
+    } else {
+      upsertBank({
+        id: uid("bank"),
+        name: n,
+        opening: openingBal,
+        isDefault: banks.length === 0,
+      });
+      toast.success("Bank added");
+    }
     setOpen(false);
+    setEditId(null);
     setName("");
+    setOpening("0");
   }
 
   return (
@@ -89,27 +130,52 @@ function BankPage() {
         <div>
           <h1 className="page-title">Bank</h1>
           <p className="mt-1 text-sm text-muted">
-            Click Warana / Bajaj / any card to show only that bank&apos;s transactions.
+            Click a card to filter transactions. Opening can be negative (OD / overdrawn).
           </p>
         </div>
-        <Button type="button" onClick={() => setOpen(true)}>
+        <Button type="button" onClick={openAdd}>
           Add bank
         </Button>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent title="Add bank">
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (!o) {
+            setEditId(null);
+            setName("");
+            setOpening("0");
+          }
+        }}
+      >
+        <DialogContent title={editId ? "Edit bank" : "Add bank"}>
           <div className="space-y-3 text-left">
             <div>
               <Label>Account name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Warana / Bajaj / HDFC" autoFocus />
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Warana / Bajaj / HDFC"
+                autoFocus
+              />
             </div>
             <div>
               <Label>Opening balance (₹)</Label>
-              <Input type="number" value={opening} onChange={(e) => setOpening(e.target.value)} />
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="any"
+                value={opening}
+                onChange={(e) => setOpening(e.target.value)}
+                placeholder="0 or -5000 for OD"
+              />
+              <p className="mt-1 text-[11px] text-muted">
+                Negative allowed — e.g. overdraft or starting overdrawn.
+              </p>
             </div>
-            <Button type="button" onClick={saveBank}>
-              Save
+            <Button type="button" className="w-full" onClick={saveBank}>
+              {editId ? "Save changes" : "Save"}
             </Button>
           </div>
         </DialogContent>
@@ -118,6 +184,7 @@ function BankPage() {
       <div className="grid gap-3 sm:grid-cols-2">
         {banks.map((b) => {
           const out = paidOut.filter((r) => r.bankAccountId === b.id).reduce((s, r) => s + r.amount, 0);
+          const bal = b.opening - out;
           const selected = selectedBankId === b.id;
           return (
             <Card
@@ -130,7 +197,7 @@ function BankPage() {
             >
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-base">{b.name}</CardTitle>
-                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                   {b.isDefault ? <Badge tone="accent">Default</Badge> : null}
                   {selected ? <Badge tone="ok">Showing</Badge> : null}
                   {!b.isDefault ? (
@@ -138,6 +205,9 @@ function BankPage() {
                       Default
                     </Button>
                   ) : null}
+                  <Button type="button" size="sm" variant="outline" onClick={() => openEdit(b)}>
+                    <Pencil className="size-3.5" /> Edit
+                  </Button>
                   <Button
                     type="button"
                     size="sm"
@@ -156,8 +226,18 @@ function BankPage() {
                   </Button>
                 </div>
               </div>
-              <CardHint>Opening {inr(b.opening)} · tap for transactions</CardHint>
-              <div className="mt-4 font-display text-3xl font-medium tabular-nums">{inr(b.opening - out)}</div>
+              <CardHint>
+                Opening {inr(b.opening)}
+                {b.opening < 0 ? " (OD)" : ""} · tap for transactions
+              </CardHint>
+              <div
+                className={cn(
+                  "mt-4 font-display text-3xl font-medium tabular-nums",
+                  bal < 0 ? "text-danger" : "",
+                )}
+              >
+                {inr(bal)}
+              </div>
               <p className="mt-1 text-[12px] text-muted">Out this month {inr(out)}</p>
             </Card>
           );
@@ -167,8 +247,8 @@ function BankPage() {
       {banks.length === 0 ? (
         <Card>
           <CardTitle>No banks</CardTitle>
-          <CardHint>Add Warana, Bajaj, HDFC, or cash.</CardHint>
-          <Button className="mt-4" onClick={() => setOpen(true)}>
+          <CardHint>Add Warana, Bajaj, HDFC, or cash. Opening can be negative for OD.</CardHint>
+          <Button className="mt-4" onClick={openAdd}>
             Add bank
           </Button>
         </Card>
@@ -179,7 +259,9 @@ function BankPage() {
           <div>
             <CardTitle>{selectedBank ? `${selectedBank.name} transactions` : "Ledger"}</CardTitle>
             <CardHint>
-              {selectedBank ? "Filtered to this account. Tap card again to show all." : "Tap a bank card to filter."}
+              {selectedBank
+                ? "Filtered to this account. Tap card again to show all."
+                : "Tap a bank card to filter."}
             </CardHint>
           </div>
           {selectedBankId ? (
