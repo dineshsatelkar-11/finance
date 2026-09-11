@@ -34,6 +34,9 @@ function Overview() {
   const extra = monthPayouts
     .filter((p) => p.kind === "extra_route" && p.status === "paid")
     .reduce((s, p) => s + p.amount, 0);
+  const returnsIn = monthPayouts
+    .filter((p) => p.kind === "return" && p.status === "paid")
+    .reduce((s, p) => s + p.amount, 0);
   const expPaid = monthExp.filter((e) => e.status === "paid").reduce((s, e) => s + e.amount, 0);
   const pendingPay = monthPayouts.filter((p) => p.status === "pending");
   const failedPay = monthPayouts.filter((p) => p.status === "failed");
@@ -46,7 +49,8 @@ function Overview() {
     (p) => p.kind === "emi" && p.status === "pending" && p.date.startsWith(month),
   );
   const pendingEmiAmt = pendingEmi.reduce((s, p) => s + p.amount, 0);
-  const bankCash = banks.reduce((s, b) => s + b.opening, 0) - salaryPaid - advances - extra - expPaid;
+  const bankCash =
+    banks.reduce((s, b) => s + b.opening, 0) - salaryPaid - advances - extra - expPaid + returnsIn;
 
   function clearHeldFailed() {
     const n = clearHeldOrFailedPayouts(month);
@@ -82,7 +86,7 @@ function Overview() {
           <Card className="h-full p-4 transition hover:border-accent/40">
             <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">Cash position</div>
             <div className="mt-2 font-display text-2xl font-medium tabular-nums tracking-tight">{inr(bankCash)}</div>
-            <div className="mt-1 text-[12px] text-subtle">Opening less paid out · bank →</div>
+            <div className="mt-1 text-[12px] text-subtle">Opening less paid out + returns · bank →</div>
           </Card>
         </Link>
 
