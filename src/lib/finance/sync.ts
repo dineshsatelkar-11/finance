@@ -31,12 +31,12 @@ const WSB_CC_BANK: BankAccount = {
   opening: -20206.2,
 };
 
-/** Warana Current …0498 — statement a/c for ops. */
+/** Warana Current …0498 — opening = end of 26-Aug-2026 statement. */
 const WSB_CURRENT_BANK: BankAccount = {
   id: "bank_wsb_current_0498",
   name: "Warana Current · …0498",
   isDefault: false,
-  opening: 2565,
+  opening: 11390,
 };
 
 /**
@@ -68,6 +68,12 @@ function ensureWsbLoan015AndCc(): boolean {
     s.upsertBank(WSB_CURRENT_BANK);
     currentId = WSB_CURRENT_BANK.id;
     changed = true;
+  } else {
+    const cur = useFinance.getState().banks.find((b) => b.id === currentId);
+    if (cur && cur.opening !== 11390) {
+      s.upsertBank({ ...cur, opening: 11390 });
+      changed = true;
+    }
   }
 
   const ccId = WSB_CC_BANK.id;
@@ -210,7 +216,6 @@ async function pushSnapshot(snap: FinanceSnapshot) {
   return saveFinanceToDb({ data: snap });
 }
 
-/** Load from Neon. Empty DB → empty UI (no auto demo seed). */
 export async function hydrateFinanceFromDb(): Promise<{
   ok: boolean;
   source: "neon" | "seed-pushed" | "local";
@@ -285,7 +290,6 @@ export function startFinanceDbSync() {
   });
 }
 
-/** Clear Neon + local store (and browser persist). */
 export async function clearAllFinanceData(): Promise<{ ok: boolean; error?: string }> {
   hydrating = true;
   try {
