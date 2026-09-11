@@ -31,7 +31,7 @@ function DriversPage() {
       <div className="flex items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-medium tracking-tight">Drivers</h1>
-          <p className="mt-1 text-sm text-muted">UPI IDs live on the driver — they survive reloads and other phones on this desk.</p>
+          <p className="mt-1 text-sm text-muted">UPI is optional — add once when you pay, it stays on the driver.</p>
         </div>
         <Button
           onClick={() => {
@@ -54,7 +54,7 @@ function DriversPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="font-medium">{d.name}</h2>
                   <Badge tone="muted">{d.kind === "full" ? "Full-time" : "Part-time"}</Badge>
-                  {d.upiVpa ? <Badge tone="ok">UPI on file</Badge> : <Badge tone="warn">No UPI</Badge>}
+                  {d.upiVpa ? <Badge tone="ok">UPI</Badge> : null}
                   {!d.active ? <Badge tone="danger">Inactive</Badge> : null}
                 </div>
                 <p className="mt-1 text-[13px] text-muted">
@@ -63,7 +63,7 @@ function DriversPage() {
                   {d.mobile ? ` · ${d.mobile}` : ""}
                 </p>
                 <p className="mt-1 font-mono text-[12px] text-ink">
-                  {d.upiVpa ? maskVpa(d.upiVpa) : "No UPI ID — payouts will ask you to add one"}
+                  {d.upiVpa ? maskVpa(d.upiVpa) : "UPI optional — add when you pay"}
                 </p>
                 {(() => {
                   const att = attendances.find((a) => a.driverId === d.id && a.month === month);
