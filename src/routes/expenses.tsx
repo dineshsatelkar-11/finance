@@ -49,18 +49,20 @@ function ExpensesPage() {
   const [editDate, setEditDate] = useState(todayISO());
   const [editNote, setEditNote] = useState("");
   const [editCat, setEditCat] = useState("Fuel");
+  const [catFilter, setCatFilter] = useState("");
 
   const rows = useMemo(
     () =>
       expenses
         .filter((e) => e.date.startsWith(month))
+        .filter((e) => !catFilter || e.category === catFilter)
         .slice()
         .sort((a, b) => {
           const d = b.date.localeCompare(a.date);
           if (d !== 0) return d;
           return (b.createdAt || "").localeCompare(a.createdAt || "");
         }),
-    [expenses, month],
+    [expenses, month, catFilter],
   );
   const total = rows.filter((e) => e.status === "paid").reduce((s, e) => s + e.amount, 0);
   const v = vendorId !== "none" ? vendors.find((x) => x.id === vendorId) : undefined;
@@ -276,10 +278,42 @@ function ExpensesPage() {
         </DialogContent>
       </Dialog>
 
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => setCatFilter("")}
+          className={
+            catFilter === ""
+              ? "rounded-full border border-accent bg-accent-soft px-3 py-1 text-[12px] font-medium text-accent"
+              : "rounded-full border border-line bg-raised px-3 py-1 text-[12px] text-muted hover:text-ink"
+          }
+        >
+          All
+        </button>
+        {CATS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setCatFilter(c)}
+            className={
+              catFilter === c
+                ? "rounded-full border border-accent bg-accent-soft px-3 py-1 text-[12px] font-medium text-accent"
+                : "rounded-full border border-line bg-raised px-3 py-1 text-[12px] text-muted hover:text-ink"
+            }
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+
       <div className="space-y-2">
         {rows.length === 0 ? (
           <Card>
-            <p className="text-sm text-muted">No expenses this month. Tap Add expense to record one.</p>
+            <p className="text-sm text-muted">
+              {catFilter
+                ? `No ${catFilter} expenses this month.`
+                : "No expenses this month. Tap Add expense to record one."}
+            </p>
           </Card>
         ) : (
           rows.map((e) => {
