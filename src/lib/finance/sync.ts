@@ -1,6 +1,50 @@
 import { useFinance } from "./store";
 import { loadFinanceFromDb, saveFinanceToDb, clearFinanceDb } from "./db-api";
-import type { FinanceSnapshot } from "./types";
+import type { BankAccount, FinanceSnapshot, Loan } from "./types";
+
+/** Canonical WSB Mini …000015 — from statement 11-Sep-2026. */
+const WSB_LOAN_015: Loan = {
+  id: "loan_wsb_000015",
+  name: "WSB Mini — A/c …000015",
+  bank: "Warana Sahakari Bank (HDFC0CSWSBL)",
+  accountNo: "3970254350000015",
+  ifsc: "HDFC0CSWSBL",
+  principal: 398000,
+  emiAmount: 8359,
+  emiDay: 9,
+  totalEmis: 60,
+  startDate: "2026-09-09",
+  endDate: "2031-09-09",
+  interestRate: 9.5,
+  outstanding: 398000,
+  pendingEmis: 59,
+  status: "active",
+  fleetId: null,
+  note: "SATELKARS LOGISTIC · Customer ID 554827 · Disburse 09/09/2026 · 398000 · EMI starts 09/10/2026 · 9.50%",
+};
+
+/** Warana Cash Credit …000001 — drawn ~20,206.20 as of 11-Sep-2026. */
+const WSB_CC_BANK: BankAccount = {
+  id: "bank_wsb_cc_000001",
+  name: "Warana CC · …000001",
+  isDefault: false,
+  opening: -20206.2,
+};
+
+/** Ensure loan 015 + CC bank exist after hydrate (safe if already present). */
+function ensureWsbLoan015AndCc(): boolean {
+  const s = useFinance.getState();
+  let changed = false;
+  if (!s.loans.some((l) => l.id === WSB_LOAN_015.id)) {
+    s.upsertLoan(WSB_LOAN_015);
+    changed = true;
+  }
+  if (!s.banks.some((b) => b.id === WSB_CC_BANK.id)) {
+    s.upsertBank(WSB_CC_BANK);
+    changed = true;
+  }
+  return changed;
+}
 
 export const EMPTY_FINANCE_SNAPSHOT: FinanceSnapshot = {
   drivers: [],
@@ -91,7 +135,12 @@ export async function hydrateFinanceFromDb(): Promise<{
       return { ok: true, source: "neon" };
     }
     applySnapshot(res.data);
+    const added = ensureWsbLoan015AndCc();
     hydrated = true;
+    if (added) {
+      // Persist new loan/CC without waiting for user edit
+      void flushFinanceSave();
+    }
     return { ok: true, source: "neon" };
   } catch (e) {
     hydrated = true;
