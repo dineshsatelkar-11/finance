@@ -152,7 +152,10 @@ function Overview() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardTitle>Drivers</CardTitle>
-          <CardHint>Balance = opening − paid (advances etc.) + fines − returns. Salary is not included — settle at month end. Tap amount for transactions.</CardHint>
+          <CardHint>
+            Balance = opening − advances + returns − fines. Return is money back from driver (not an
+            advance). Salary / extra route not in balance. Tap for transactions.
+          </CardHint>
           <ul className="mt-4 divide-y divide-line">
             {drivers
               .filter((d) => d.active)
