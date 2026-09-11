@@ -45,7 +45,6 @@ function BankPage() {
 
   const selectedBank = banks.find((b) => b.id === selectedBankId) || null;
 
-  /** Month filter only when viewing all banks; selected account shows full history. */
   function inScope(date: string) {
     if (selectedBankId) return true;
     return date.startsWith(month);
@@ -55,7 +54,6 @@ function BankPage() {
     return !selectedBankId || bankAccountId === selectedBankId;
   }
 
-  /** Outflow this month per bank (payouts + expenses + loan EMIs). */
   const outByBank = useMemo(() => {
     const map = new Map<string, number>();
     const add = (id: string, amt: number) => map.set(id, (map.get(id) || 0) + amt);
@@ -149,14 +147,34 @@ function BankPage() {
       }
       const fromName = banks.find((b) => b.id === x.fromBankId)?.name || "From";
       const toName = banks.find((b) => b.id === x.toBankId)?.name || "To";
-      rows.push({
-        id: x.id,
-        date: x.date,
-        kind: "xfer",
-        label: `Transfer · ${fromName} \u2192 ${toName}`,
-        sub: x.note || "Internal",
-        amount: x.amount,
-      });
+      if (selectedBankId === x.fromBankId) {
+        rows.push({
+          id: `${x.id}_out`,
+          date: x.date,
+          kind: "out",
+          label: `Transfer to ${toName}`,
+          sub: x.note || "Internal transfer",
+          amount: x.amount,
+        });
+      } else if (selectedBankId === x.toBankId) {
+        rows.push({
+          id: `${x.id}_in`,
+          date: x.date,
+          kind: "in",
+          label: `Transfer from ${fromName}`,
+          sub: x.note || "Internal transfer",
+          amount: x.amount,
+        });
+      } else {
+        rows.push({
+          id: x.id,
+          date: x.date,
+          kind: "xfer",
+          label: `Transfer · ${fromName} → ${toName}`,
+          sub: x.note || "Internal",
+          amount: x.amount,
+        });
+      }
     }
 
     return rows
@@ -261,7 +279,7 @@ function BankPage() {
               />
             </div>
             <div>
-              <Label>Opening balance (\u20b9)</Label>
+              <Label>Opening balance (₹)</Label>
               <Input
                 type="number"
                 inputMode="decimal"
@@ -271,7 +289,7 @@ function BankPage() {
                 placeholder="0 or -5000 for OD"
               />
               <p className="mt-1 text-[11px] text-muted">
-                Negative allowed \u2014 e.g. overdraft or starting overdrawn.
+                Negative allowed — e.g. overdraft or starting overdrawn.
               </p>
             </div>
             <Button type="button" className="w-full" onClick={saveBank}>
@@ -329,7 +347,7 @@ function BankPage() {
               </div>
               <CardHint>
                 Opening {inr(b.opening)}
-                {b.opening < 0 ? " (OD)" : ""} \u00b7 tap for transactions
+                {b.opening < 0 ? " (OD)" : ""} · tap for transactions
               </CardHint>
               <div
                 className={cn(
@@ -341,7 +359,7 @@ function BankPage() {
               </div>
               <p className="mt-1 text-[12px] text-muted">
                 Out {inr(out)}
-                {inn > 0 ? ` \u00b7 In ${inr(inn)}` : ""} this month
+                {inn > 0 ? ` · In ${inr(inn)}` : ""} this month
               </p>
             </Card>
           );
@@ -364,7 +382,7 @@ function BankPage() {
             <CardTitle>{selectedBank ? `${selectedBank.name} transactions` : "Ledger"}</CardTitle>
             <CardHint>
               {selectedBank
-                ? "All transactions for this account (payouts, expenses, EMIs, receipts, transfers). Tap card again to show all banks."
+                ? "All transactions for this account. Transfers show as − on source and + on destination."
                 : "This month across all accounts. Tap a bank card to filter."}
             </CardHint>
           </div>
@@ -378,7 +396,7 @@ function BankPage() {
           {ledgerRows.length === 0 ? (
             <li className="py-6 text-center text-sm text-muted">
               {selectedBank
-                ? "No transactions linked to this account yet. Payouts/expenses/EMIs must use this bank when recording."
+                ? "No transactions linked to this account yet."
                 : "No transactions this month."}
             </li>
           ) : (
@@ -387,7 +405,7 @@ function BankPage() {
                 <div>
                   <div className="font-medium capitalize">{r.label}</div>
                   <div className="text-[12px] text-muted">
-                    {shortDate(r.date)} \u00b7 {r.sub}
+                    {shortDate(r.date)} · {r.sub}
                   </div>
                 </div>
                 <div
@@ -399,7 +417,7 @@ function BankPage() {
                         : "tabular-nums text-danger"
                   }
                 >
-                  {r.kind === "xfer" ? "\u2194" : r.kind === "in" ? "+" : "\u2212"}
+                  {r.kind === "xfer" ? "↔" : r.kind === "in" ? "+" : "−"}
                   {inr(r.amount)}
                 </div>
               </li>
@@ -420,7 +438,7 @@ function BankPage() {
           else window.alert("Cleared.");
         }}
       >
-        {clearing ? "Clearing\u2026" : "Clear all data"}
+        {clearing ? "Clearing…" : "Clear all data"}
       </Button>
     </div>
   );
