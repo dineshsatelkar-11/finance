@@ -78,11 +78,13 @@ function Overview() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Card className="p-4">
-          <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">Cash position</div>
-          <div className="mt-2 font-display text-2xl font-medium tabular-nums tracking-tight">{inr(bankCash)}</div>
-          <div className="mt-1 text-[12px] text-subtle">Opening less paid out</div>
-        </Card>
+        <Link to="/bank" className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent">
+          <Card className="h-full p-4 transition hover:border-accent/40">
+            <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">Cash position</div>
+            <div className="mt-2 font-display text-2xl font-medium tabular-nums tracking-tight">{inr(bankCash)}</div>
+            <div className="mt-1 text-[12px] text-subtle">Opening less paid out · bank →</div>
+          </Card>
+        </Link>
 
         <Link to="/loans" className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent">
           <Card className="h-full p-4 transition hover:border-accent/40">
