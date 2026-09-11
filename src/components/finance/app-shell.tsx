@@ -11,6 +11,8 @@ import {
   HandCoins,
   Building2,
   MoreHorizontal,
+  Users,
+  MessageCircle,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +29,8 @@ const NAV = [
   { to: "/payouts", label: "Pay", icon: Wallet, primary: true },
   { to: "/expenses", label: "Spend", icon: Receipt, primary: true },
   { to: "/bank", label: "Bank", icon: Banknote, primary: true },
+  { to: "/manage-drivers", label: "Manage drivers", icon: Users, primary: false },
+  { to: "/statement", label: "Statement chat", icon: MessageCircle, primary: false },
   { to: "/fleets", label: "Fleet", icon: Car, primary: false },
   { to: "/loans", label: "Loans", icon: Landmark, primary: false },
   { to: "/receipts", label: "Receipts", icon: HandCoins, primary: false },
@@ -67,6 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMoreOpen(false);
   }, [pathname]);
 
+  // Lock background scroll when More sheet is open
   useEffect(() => {
     if (!moreOpen) return;
     const prev = document.body.style.overflow;
@@ -101,6 +106,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </label>
         </div>
 
+        {/* Desktop nav */}
         <nav className="mx-auto hidden max-w-6xl gap-1 overflow-x-auto px-2 pb-2 sm:flex sm:px-4">
           {NAV.map(({ to, label, icon: Icon }) => {
             const active = pathname === to;
@@ -123,6 +129,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
       </header>
 
+      {/* pb accounts for bottom nav + home indicator on phones */}
       <main className="mx-auto w-full max-w-6xl min-w-0 safe-px py-4 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 sm:pb-6">
         {dbNote ? (
           <p className="mb-3 break-words rounded-md border border-line bg-accent-soft px-3 py-2 text-[12px] text-ink">
@@ -133,6 +140,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="min-w-0 w-full">{children}</div>
       </main>
 
+      {/* Mobile bottom nav — fixed, does not scroll with content */}
       <nav
         className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-panel/98 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden"
         style={{ paddingLeft: "env(safe-area-inset-left)", paddingRight: "env(safe-area-inset-right)" }}
