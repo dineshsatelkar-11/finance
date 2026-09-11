@@ -31,10 +31,22 @@ const WSB_CC_BANK: BankAccount = {
   opening: -20206.2,
 };
 
-/** Ensure loan 015 + CC bank exist after hydrate (safe if already present). */
+/** Warana Current …0498 — statement a/c for ops. */
+const WSB_CURRENT_BANK: BankAccount = {
+  id: "bank_wsb_current_0498",
+  name: "Warana Current · …0498",
+  isDefault: false,
+  opening: 2565,
+};
+
+/**
+ * Ensure loan 015, CC bank, Current bank, CC→Current transfers, and CC GST expense.
+ * Transfers/expense are inserted without re-adjusting openings (openings already net of statement).
+ */
 function ensureWsbLoan015AndCc(): boolean {
   const s = useFinance.getState();
   let changed = false;
+
   if (!s.loans.some((l) => l.id === WSB_LOAN_015.id)) {
     s.upsertLoan(WSB_LOAN_015);
     changed = true;
@@ -43,6 +55,89 @@ function ensureWsbLoan015AndCc(): boolean {
     s.upsertBank(WSB_CC_BANK);
     changed = true;
   }
+
+  let currentId =
+    s.banks.find(
+      (b) =>
+        b.id === WSB_CURRENT_BANK.id ||
+        (/warana|warna/i.test(b.name) && /current|0498/i.test(b.name)),
+    )?.id ||
+    s.banks.find((b) => /warana|warna/i.test(b.name) && !/cc/i.test(b.name))?.id;
+
+  if (!currentId) {
+    s.upsertBank(WSB_CURRENT_BANK);
+    currentId = WSB_CURRENT_BANK.id;
+    changed = true;
+  }
+
+  const ccId = WSB_CC_BANK.id;
+  const xfers = [
+    {
+      id: "xfer_cc_to_cur_100_20260910",
+      fromBankId: ccId,
+      toBankId: currentId,
+      amount: 100,
+      date: "2026-09-10",
+      note: "OWN CC → Current · statement",
+      createdAt: "2026-09-10T12:00:00.000Z",
+    },
+    {
+      id: "xfer_cc_to_cur_10k_a_20260911",
+      fromBankId: ccId,
+      toBankId: currentId,
+      amount: 10000,
+      date: "2026-09-11",
+      note: "OWN CC → Current SELF · statement",
+      createdAt: "2026-09-11T12:00:00.000Z",
+    },
+    {
+      id: "xfer_cc_to_cur_10k_b_20260911",
+      fromBankId: ccId,
+      toBankId: currentId,
+      amount: 10000,
+      date: "2026-09-11",
+      note: "OWN CC → Current · statement",
+      createdAt: "2026-09-11T12:30:00.000Z",
+    },
+  ];
+
+  const existingXferIds = new Set((s.bankTransfers ?? []).map((x) => x.id));
+  const missingXfers = xfers.filter((x) => !existingXferIds.has(x.id));
+  if (missingXfers.length) {
+    useFinance.setState((state) => ({
+      bankTransfers: [...missingXfers, ...(state.bankTransfers ?? [])],
+    }));
+    changed = true;
+  }
+
+  const gstId = "exp_cc_gst_20260825";
+  if (!s.expenses.some((e) => e.id === gstId)) {
+    const cc = useFinance.getState().banks.find((b) => b.id === ccId);
+    if (cc) {
+      s.upsertBank({ ...cc, opening: Math.round((cc.opening + 16.2) * 100) / 100 });
+    }
+    useFinance.setState((state) => ({
+      expenses: [
+        {
+          id: gstId,
+          category: "Other",
+          vendor: "Warana Bank GST",
+          amount: 16.2,
+          date: "2026-08-25",
+          mode: "bank" as const,
+          status: "paid" as const,
+          bankAccountId: ccId,
+          upiVpa: "",
+          fleetId: null,
+          note: "GST · cheque book 1–45 · CC statement",
+          createdAt: "2026-08-25T12:00:00.000Z",
+        },
+        ...state.expenses,
+      ],
+    }));
+    changed = true;
+  }
+
   return changed;
 }
 
@@ -138,7 +233,6 @@ export async function hydrateFinanceFromDb(): Promise<{
     const added = ensureWsbLoan015AndCc();
     hydrated = true;
     if (added) {
-      // Persist new loan/CC without waiting for user edit
       void flushFinanceSave();
     }
     return { ok: true, source: "neon" };
