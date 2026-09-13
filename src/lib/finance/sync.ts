@@ -1,6 +1,14 @@
 import { useFinance } from "./store";
 import { loadFinanceFromDb, saveFinanceToDb, clearFinanceDb } from "./db-api";
-import type { BankAccount, FinanceSnapshot, Loan } from "./types";
+import type {
+  BankAccount,
+  BankTransfer,
+  Driver,
+  Expense,
+  FinanceSnapshot,
+  Loan,
+  Payout,
+} from "./types";
 
 /** Canonical WSB Mini …000015 — from statement 11-Sep-2026. */
 const WSB_LOAN_015: Loan = {
@@ -31,7 +39,7 @@ const WSB_CC_BANK: BankAccount = {
   opening: -20206.2,
 };
 
-/** Warana Current …0498 — opening = end of 26-Aug-2026 statement. */
+/** Warana Current …0498 — opening = end of 26-Aug-2026 statement (₹11,390.30). */
 const WSB_CURRENT_BANK: BankAccount = {
   id: "bank_wsb_current_0498",
   name: "Warana Current · …0498",
@@ -39,45 +47,90 @@ const WSB_CURRENT_BANK: BankAccount = {
   opening: 11390,
 };
 
-/**
- * Ensure loan 015, CC bank, Current bank, CC→Current transfers, and CC GST expense.
- * Transfers/expense are inserted without re-adjusting openings (openings already net of statement).
- */
-function ensureWsbLoan015AndCc(): boolean {
+const STMT_DRIVERS: { id: string; name: string }[] = [
+  { id: "drv_anand", name: "Anand" },
+  { id: "drv_vikas", name: "Vikas" },
+  { id: "drv_sandeep", name: "Sandeep" },
+  { id: "drv_vivek", name: "Vivek" },
+  { id: "drv_ballu", name: "Ballu" },
+];
+
+function ensureDriverByName(name: string, preferredId: string): string {
   const s = useFinance.getState();
-  let changed = false;
+  const existing = s.drivers.find((d) => d.name.toLowerCase() === name.toLowerCase());
+  if (existing) return existing.id;
+  const row: Driver = {
+    id: preferredId,
+    name,
+    mobile: "",
+    kind: "full",
+    baseSalary: 0,
+    dailyRate: 0,
+    openingBalance: 0,
+    active: true,
+    upiVpa: "",
+    upiPayeeName: name,
+    upiUpdatedAt: null,
+    fleetId: null,
+    note: "From Warana statement import",
+  };
+  s.upsertDriver(row);
+  return preferredId;
+}
 
-  if (!s.loans.some((l) => l.id === WSB_LOAN_015.id)) {
-    s.upsertLoan(WSB_LOAN_015);
-    changed = true;
-  }
-  if (!s.banks.some((b) => b.id === WSB_CC_BANK.id)) {
-    s.upsertBank(WSB_CC_BANK);
-    changed = true;
-  }
-
-  let currentId =
+function resolveCurrentBankId(): string {
+  const s = useFinance.getState();
+  const found =
     s.banks.find(
       (b) =>
         b.id === WSB_CURRENT_BANK.id ||
         (/warana|warna/i.test(b.name) && /current|0498/i.test(b.name)),
     )?.id ||
     s.banks.find((b) => /warana|warna/i.test(b.name) && !/cc/i.test(b.name))?.id;
+  if (found) return found;
+  s.upsertBank(WSB_CURRENT_BANK);
+  return WSB_CURRENT_BANK.id;
+}
 
-  if (!currentId) {
-    s.upsertBank(WSB_CURRENT_BANK);
-    currentId = WSB_CURRENT_BANK.id;
+function resolveBajajBankId(): string | null {
+  const s = useFinance.getState();
+  return s.banks.find((b) => /bajaj/i.test(b.name))?.id ?? null;
+}
+
+/**
+ * Ensure loan 015, CC, Current (opening 11390), CC→Current transfers, GST,
+ * and the first 30 classified Warana Current statement rows (27-Aug → 04-Sep).
+ * Rows use fixed ids — safe to re-run. Does NOT re-adjust bank openings for these lines
+ * (opening is the statement balance at end of 26-Aug).
+ */
+function ensureWsbLoan015AndCc(): boolean {
+  const s0 = useFinance.getState();
+  let changed = false;
+
+  if (!s0.loans.some((l) => l.id === WSB_LOAN_015.id)) {
+    s0.upsertLoan(WSB_LOAN_015);
     changed = true;
-  } else {
-    const cur = useFinance.getState().banks.find((b) => b.id === currentId);
-    if (cur && cur.opening !== 11390) {
-      s.upsertBank({ ...cur, opening: 11390 });
-      changed = true;
-    }
+  }
+  if (!s0.banks.some((b) => b.id === WSB_CC_BANK.id)) {
+    s0.upsertBank(WSB_CC_BANK);
+    changed = true;
+  }
+
+  const currentId = resolveCurrentBankId();
+  const cur = useFinance.getState().banks.find((b) => b.id === currentId);
+  if (cur && Math.abs((cur.opening ?? 0) - 11390) > 0.001) {
+    useFinance.getState().upsertBank({ ...cur, opening: 11390 });
+    changed = true;
+  }
+
+  // Drivers used in statement batch
+  const driverIds: Record<string, string> = {};
+  for (const d of STMT_DRIVERS) {
+    driverIds[d.name] = ensureDriverByName(d.name, d.id);
   }
 
   const ccId = WSB_CC_BANK.id;
-  const xfers = [
+  const xfers: BankTransfer[] = [
     {
       id: "xfer_cc_to_cur_100_20260910",
       fromBankId: ccId,
@@ -107,7 +160,20 @@ function ensureWsbLoan015AndCc(): boolean {
     },
   ];
 
-  const existingXferIds = new Set((s.bankTransfers ?? []).map((x) => x.id));
+  const bajajId = resolveBajajBankId();
+  if (bajajId) {
+    xfers.push({
+      id: "xfer_bajaj_to_warana_5000_20260901",
+      fromBankId: bajajId,
+      toBankId: currentId,
+      amount: 5000,
+      date: "2026-09-01",
+      note: "Bajaj → Warana Current · statement (Dinesh UPI credit side)",
+      createdAt: "2026-09-01T12:00:00.000Z",
+    });
+  }
+
+  const existingXferIds = new Set((useFinance.getState().bankTransfers ?? []).map((x) => x.id));
   const missingXfers = xfers.filter((x) => !existingXferIds.has(x.id));
   if (missingXfers.length) {
     useFinance.setState((state) => ({
@@ -117,10 +183,13 @@ function ensureWsbLoan015AndCc(): boolean {
   }
 
   const gstId = "exp_cc_gst_20260825";
-  if (!s.expenses.some((e) => e.id === gstId)) {
+  if (!useFinance.getState().expenses.some((e) => e.id === gstId)) {
     const cc = useFinance.getState().banks.find((b) => b.id === ccId);
     if (cc) {
-      s.upsertBank({ ...cc, opening: Math.round((cc.opening + 16.2) * 100) / 100 });
+      useFinance.getState().upsertBank({
+        ...cc,
+        opening: Math.round((cc.opening + 16.2) * 100) / 100,
+      });
     }
     useFinance.setState((state) => ({
       expenses: [
@@ -140,6 +209,140 @@ function ensureWsbLoan015AndCc(): boolean {
         },
         ...state.expenses,
       ],
+    }));
+    changed = true;
+  }
+
+  // --- 30 classified Warana Current rows (opening = end 26-Aug) ---
+  type PSeed = Omit<Payout, "createdAt"> & { createdAt?: string };
+  type ESeed = Omit<Expense, "createdAt"> & { createdAt?: string };
+
+  const po = (
+    id: string,
+    driver: string,
+    kind: Payout["kind"],
+    amount: number,
+    date: string,
+    note: string,
+  ): PSeed => ({
+    id,
+    driverId: driverIds[driver],
+    kind,
+    amount,
+    date,
+    mode: "upi",
+    status: "paid",
+    bankAccountId: currentId,
+    upiVpa: "",
+    note,
+    createdAt: `${date}T12:00:00.000Z`,
+  });
+
+  const ex = (
+    id: string,
+    category: string,
+    vendor: string,
+    amount: number,
+    date: string,
+    note: string,
+  ): ESeed => ({
+    id,
+    category,
+    vendor,
+    amount,
+    date,
+    mode: "upi",
+    status: "paid",
+    bankAccountId: currentId,
+    upiVpa: "",
+    fleetId: null,
+    note,
+    createdAt: `${date}T12:00:00.000Z`,
+  });
+
+  const payouts: PSeed[] = [
+    // 27-Aug
+    po("po_stmt_20260827_vikas_er_250", "Vikas", "extra_route", 250, "2026-08-27", "UPI Vikas · statement"),
+    po("po_stmt_20260827_vivek_er_250", "Vivek", "extra_route", 250, "2026-08-27", "UPI Vivek · statement"),
+    po("po_stmt_20260827_anand_ret_300", "Anand", "return", 300, "2026-08-27", "UPI Mohan/Anand return · statement"),
+    po("po_stmt_20260827_vikas_adv_1500", "Vikas", "advance", 1500, "2026-08-27", "UPI Vikas advance · statement"),
+    // 28-Aug
+    po("po_stmt_20260828_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-08-28", "UPI Balaji/Sandeep · statement"),
+    po("po_stmt_20260828_vivek_er_250", "Vivek", "extra_route", 250, "2026-08-28", "UPI Vivek · statement"),
+    // 29-Aug
+    po("po_stmt_20260829_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-08-29", "UPI Balaji/Sandeep · statement"),
+    po("po_stmt_20260829_vikas_adv_2000", "Vikas", "advance", 2000, "2026-08-29", "UPI Dnyaneshwar/Vikas advance · statement"),
+    po("po_stmt_20260829_vikas_adv_1500", "Vikas", "advance", 1500, "2026-08-29", "UPI Dnyaneshwar/Vikas advance · statement"),
+    // 30-Aug
+    po("po_stmt_20260830_ballu_adv_2000", "Ballu", "advance", 2000, "2026-08-30", "AVI Servicing → Ballu advance · statement"),
+    // 31-Aug
+    po("po_stmt_20260831_vivek_er_250", "Vivek", "extra_route", 250, "2026-08-31", "UPI Vivek · statement"),
+    po("po_stmt_20260831_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-08-31", "UPI Balaji/Sandeep · statement"),
+    po("po_stmt_20260831_vikas_er_250", "Vikas", "extra_route", 250, "2026-08-31", "UPI Vikas · statement"),
+    // 01-Sep
+    po("po_stmt_20260901_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-09-01", "UPI Balaji/Sandeep · statement"),
+    po("po_stmt_20260901_sandeep_adv_1000", "Sandeep", "advance", 1000, "2026-09-01", "UPI Balaji/Sandeep advance · statement"),
+    po("po_stmt_20260901_vikas_er_250", "Vikas", "extra_route", 250, "2026-09-01", "UPI Vikas · statement"),
+    // 02-Sep
+    po("po_stmt_20260902_ballu_er_500", "Ballu", "extra_route", 500, "2026-09-02", "AVI → Ballu extra route · statement"),
+    po("po_stmt_20260902_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-09-02", "UPI Balaji/Sandeep · statement"),
+    po("po_stmt_20260902_vikas_er_250", "Vikas", "extra_route", 250, "2026-09-02", "UPI Vikas · statement"),
+    // 03-Sep
+    po("po_stmt_20260903_vikas_er_250", "Vikas", "extra_route", 250, "2026-09-03", "UPI Vikas · statement"),
+    po("po_stmt_20260903_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-09-03", "UPI Balaji/Sandeep · statement"),
+    po("po_stmt_20260903_ballu_er_500", "Ballu", "extra_route", 500, "2026-09-03", "AVI → Ballu extra route · statement"),
+    // 04-Sep
+    po("po_stmt_20260904_vikas_er_250", "Vikas", "extra_route", 250, "2026-09-04", "UPI Vikas · statement"),
+    po("po_stmt_20260904_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-09-04", "UPI Balaji/Sandeep · statement"),
+  ];
+
+  const expenses: ESeed[] = [
+    // 27-Aug
+    ex(
+      "exp_stmt_20260827_fleet8026_138",
+      "Maintenance",
+      "Fleet 8026",
+      138,
+      "2026-08-27",
+      "UPI Vivek · expense fleet 8026 · statement",
+    ),
+    // 30-Aug
+    ex("exp_stmt_20260830_porter_200", "Porter", "Porter", 200, "2026-08-30", "Porter smartshift · statement"),
+    // 03-Sep CIBIL / new loan file
+    ex(
+      "exp_stmt_20260903_cibil_siddhesh_199",
+      "Other",
+      "CIBIL · Siddhesh",
+      199.42,
+      "2026-09-03",
+      "CIBIL charges tax Siddhesh · new loan file · statement",
+    ),
+    ex(
+      "exp_stmt_20260903_cibil_dinesh_199",
+      "Other",
+      "CIBIL · Dinesh",
+      199.42,
+      "2026-09-03",
+      "CIBIL charges tax Dinesh · new loan file · statement",
+    ),
+    // 04-Sep
+    ex("exp_stmt_20260904_porter_300", "Porter", "Porter", 300, "2026-09-04", "Porter · statement"),
+  ];
+
+  const existingPo = new Set(useFinance.getState().payouts.map((p) => p.id));
+  const missingPo = payouts.filter((p) => !existingPo.has(p.id));
+  if (missingPo.length) {
+    useFinance.setState((state) => ({
+      payouts: [...(missingPo as Payout[]), ...state.payouts],
+    }));
+    changed = true;
+  }
+
+  const existingEx = new Set(useFinance.getState().expenses.map((e) => e.id));
+  const missingEx = expenses.filter((e) => !existingEx.has(e.id));
+  if (missingEx.length) {
+    useFinance.setState((state) => ({
+      expenses: [...(missingEx as Expense[]), ...state.expenses],
     }));
     changed = true;
   }
