@@ -97,11 +97,35 @@ function resolveBajajBankId(): string | null {
   return s.banks.find((b) => /bajaj/i.test(b.name))?.id ?? null;
 }
 
+/** Once statement rows have been imported, never re-insert (so user deletes stick). */
+const STMT_SEED_FLAG = "finance_wsb_stmt_seed_v1";
+
+function isStatementSeedDone(): boolean {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.getItem(STMT_SEED_FLAG) === "1") {
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  const s = useFinance.getState();
+  // Any prior statement payout/expense → treat as done (do not resurrect deleted siblings)
+  if (s.payouts.some((p) => p.id.startsWith("po_stmt_"))) return true;
+  if (s.expenses.some((e) => e.id.startsWith("exp_stmt_"))) return true;
+  return false;
+}
+
+function markStatementSeedDone() {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(STMT_SEED_FLAG, "1");
+  } catch {
+    // ignore
+  }
+}
+
 /**
- * Ensure loan 015, CC, Current (opening 11390), CC→Current transfers, GST,
- * and the first 30 classified Warana Current statement rows (27-Aug → 04-Sep).
- * Rows use fixed ids — safe to re-run. Does NOT re-adjust bank openings for these lines
- * (opening is the statement balance at end of 26-Aug).
+ * Ensure loan 015, CC, Current (opening 11390).
+ * Statement transfers / GST / 30 classified rows seed ONCE only — never re-add after delete.
  */
 function ensureWsbLoan015AndCc(): boolean {
   const s0 = useFinance.getState();
@@ -130,6 +154,13 @@ function ensureWsbLoan015AndCc(): boolean {
   }
 
   const ccId = WSB_CC_BANK.id;
+
+  // Statement ledger seed runs only once so deletes persist across refresh
+  if (isStatementSeedDone()) {
+    markStatementSeedDone();
+    return changed;
+  }
+
   const xfers: BankTransfer[] = [
     {
       id: "xfer_cc_to_cur_100_20260910",
@@ -277,7 +308,7 @@ function ensureWsbLoan015AndCc(): boolean {
     po("po_stmt_20260830_ballu_adv_2000", "Ballu", "advance", 2000, "2026-08-30", "AVI Servicing → Ballu advance · statement"),
     // 31-Aug
     po("po_stmt_20260831_vivek_er_250", "Vivek", "extra_route", 250, "2026-08-31", "UPI Vivek · statement"),
-    po("po_stmt_20260831_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-08-31", "UPI Balaji/Sandeep · statement"),
+    po("po_stmt_20260831_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-08-31", "UPI Vikas · statement"),
     po("po_stmt_20260831_vikas_er_250", "Vikas", "extra_route", 250, "2026-08-31", "UPI Vikas · statement"),
     // 01-Sep
     po("po_stmt_20260901_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-09-01", "UPI Balaji/Sandeep · statement"),
@@ -347,6 +378,8 @@ function ensureWsbLoan015AndCc(): boolean {
     changed = true;
   }
 
+  // Always mark done after first seed attempt so deletes are never resurrected
+  markStatementSeedDone();
   return changed;
 }
 
@@ -501,6 +534,7 @@ export async function clearAllFinanceData(): Promise<{ ok: boolean; error?: stri
     applySnapshot(EMPTY_FINANCE_SNAPSHOT);
     try {
       localStorage.removeItem("satelkar-finance-v5");
+      localStorage.removeItem(STMT_SEED_FLAG);
     } catch {
       // ignore
     }
