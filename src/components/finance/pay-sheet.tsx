@@ -10,7 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { UpiField } from "@/components/finance/upi-field";
 import { UpiQr } from "@/components/finance/upi-qr";
 import { defaultBankId, useFinance } from "@/lib/finance/store";
-import { inr, openWhatsApp, suggestedSalary, todayISO, WORKING_DAYS } from "@/lib/finance/format";
+import {
+  inr,
+  monthAdvances,
+  netSalaryPayable,
+  openWhatsApp,
+  suggestedSalary,
+  todayISO,
+  WORKING_DAYS,
+} from "@/lib/finance/format";
 import type { PayMode, PayoutKind } from "@/lib/finance/types";
 import {
   detectMobileOs,
@@ -87,9 +95,14 @@ export function PaySheet({
     setPendingId(null);
   }, [open, driverId]);
 
+  const payouts = useFinance((s) => s.payouts);
   const driver = drivers.find((d) => d.id === id);
   const leaveN = Math.max(0, Math.floor(parseFloat(leaveDays) || 0));
-  const salaryHint = driver ? suggestedSalary(driver, leaveN) : 0;
+  /** Gross month salary (display only). */
+  const salaryGross = driver ? suggestedSalary(driver, leaveN) : 0;
+  const advancesThisMonth = driver ? monthAdvances(driver.id, month, payouts) : 0;
+  /** Net to pay at month end = salary − advances. */
+  const salaryNet = driver ? netSalaryPayable(driver, leaveN, month, payouts) : 0;
   const os = detectMobileOs();
 
   const vpa = useMemo(() => {
@@ -258,7 +271,10 @@ export function PaySheet({
                   setUpi(d?.upiVpa || "");
                   setPayee(d?.upiPayeeName || d?.name || "");
                   setLeaveDays(String(leaves));
-                  if (kind === "salary" && d) setAmount(String(suggestedSalary(d, leaves)));
+                  if (kind === "salary" && d) {
+                    const net = netSalaryPayable(d, leaves, month, payouts);
+                    setAmount(String(Math.max(0, net)));
+                  }
                 }}
               >
                 <SelectTrigger>
@@ -280,7 +296,22 @@ export function PaySheet({
             <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3">
               <div>
                 <Label>Type</Label>
-                <Select value={kind} onValueChange={(v) => setKind(v as PayoutKind)}>
+                <Select
+                  value={kind}
+                  onValueChange={(v) => {
+                    const next = v as PayoutKind;
+                    setKind(next);
+                    if (next === "salary" && driver) {
+                      const net = netSalaryPayable(driver, leaveN, month, payouts);
+                      setAmount(String(Math.max(0, net)));
+                      setNote(
+                        leaveN > 0
+                          ? `Leave ${leaveN} day(s) · net = salary − advances`
+                          : `Net = month salary − advances`,
+                      );
+                    }
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -307,6 +338,10 @@ export function PaySheet({
 
             {kind === "salary" ? (
               <div className="rounded-lg border border-line bg-canvas/60 p-3 space-y-3">
+                <p className="text-[12px] text-muted">
+                  Month-end only: salary is calculated, then advances are deducted. Pay the{" "}
+                  <span className="font-medium text-ink">net</span> amount (not full salary).
+                </p>
                 <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3">
                   <div>
                     <Label htmlFor="pay-leave">Leave days (this month)</Label>
@@ -320,17 +355,45 @@ export function PaySheet({
                         setLeaveDays(v);
                         const n = Math.max(0, Math.floor(parseFloat(v) || 0));
                         if (driver) {
-                          setAmount(String(suggestedSalary(driver, n)));
+                          const net = netSalaryPayable(driver, n, month, payouts);
+                          setAmount(String(Math.max(0, net)));
                           setAttendance(driver.id, month, n);
-                          setNote(n > 0 ? `Leave ${n} day(s) · pro-rata on ${WORKING_DAYS} days` : "");
+                          setNote(
+                            n > 0
+                              ? `Leave ${n} day(s) · salary − advances · pro-rata on ${WORKING_DAYS} days`
+                              : `Month salary − advances`,
+                          );
                         }
                       }}
                     />
                   </div>
                   <div>
-                    <Label>Suggested salary</Label>
-                    <div className="flex h-11 items-center font-medium tabular-nums text-ink">{inr(salaryHint)}</div>
-                    <p className="text-[11px] text-muted">Settle at month end — not in running balance</p>
+                    <Label>Month salary (gross)</Label>
+                    <div className="flex h-11 items-center font-medium tabular-nums text-ink">
+                      {inr(salaryGross)}
+                    </div>
+                    <p className="text-[11px] text-muted">Calculated · not paid as full amount</p>
+                  </div>
+                </div>
+                <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 text-sm">
+                  <div>
+                    <p className="text-[11px] text-muted">Advances this month</p>
+                    <p className="font-medium tabular-nums text-warn">− {inr(advancesThisMonth)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted">Net to pay</p>
+                    <p
+                      className={
+                        salaryNet < 0
+                          ? "font-medium tabular-nums text-warn"
+                          : "font-medium tabular-nums text-ink"
+                      }
+                    >
+                      {inr(salaryNet)}
+                    </p>
+                    {salaryNet < 0 ? (
+                      <p className="text-[11px] text-warn">Over-advanced — nothing further to pay</p>
+                    ) : null}
                   </div>
                 </div>
                 <Button
@@ -339,12 +402,21 @@ export function PaySheet({
                   variant="outline"
                   onClick={() => {
                     if (!driver) return;
-                    setAmount(String(salaryHint));
+                    setAmount(String(Math.max(0, salaryNet)));
                     setAttendance(driver.id, month, leaveN);
-                    toast.message("Amount set from leave days");
+                    setNote(
+                      leaveN > 0
+                        ? `Leave ${leaveN} day(s) · net = salary − advances`
+                        : `Net = month salary ${salaryGross} − advances ${advancesThisMonth}`,
+                    );
+                    toast.message(
+                      salaryNet < 0
+                        ? "Over-advanced — amount set to 0"
+                        : "Amount set to net (salary − advances)",
+                    );
                   }}
                 >
-                  Use suggested amount
+                  Use net amount (salary − advances)
                 </Button>
               </div>
             ) : null}
@@ -386,7 +458,7 @@ export function PaySheet({
             </div>
 
             {mode === "upi" ? (
-              <div className="rounded-lg border border-line bg-accent-soft/60 p-4">
+              <div className="rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
                 {driver?.upiVpa ? (
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <div>
