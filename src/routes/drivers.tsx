@@ -32,7 +32,7 @@ function DriversPage() {
       <div>
         <h1 className="font-display text-3xl font-medium tracking-tight">Drivers</h1>
         <p className="mt-1 text-sm text-muted">
-          Balance + month salary. Net pay at month end = salary − advances.
+          Balance + month salary. Calculated month-end; usually paid next month 10–15 (net = salary − advances).
         </p>
       </div>
 
@@ -70,10 +70,11 @@ function DriversPage() {
                     <p className="text-[11px] text-subtle">Running balance · advances only</p>
                     {gross > 0 ? (
                       <p className="mt-1 text-[11px] text-muted tabular-nums">
-                        Month salary {inr(gross)}
-                        {adv > 0 ? ` − advances ${inr(adv)}` : ""}
+                        This month salary {inr(gross)}
+                        {adv > 0 ? ` − adv ${inr(adv)}` : ""}
                         {" → "}
                         <span className={net < 0 ? "text-warn" : "text-ink"}>net {inr(net)}</span>
+                        <span className="text-subtle"> · pay next month ~10–15</span>
                       </p>
                     ) : null}
                   </div>

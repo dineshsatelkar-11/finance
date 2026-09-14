@@ -8,6 +8,14 @@ export function monthISO(d = new Date()) {
   return `${y}-${m}`;
 }
 
+/** Previous calendar month as YYYY-MM (e.g. for salary calculated last month, paid this month). */
+export function prevMonthISO(ym?: string) {
+  const base = ym && /^\d{4}-\d{2}$/.test(ym) ? ym : monthISO();
+  const [y, m] = base.split("-").map(Number);
+  const d = new Date(y!, (m! - 1) - 1, 1);
+  return monthISO(d);
+}
+
 export function todayISO(d = new Date()) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -119,9 +127,9 @@ export function monthAdvances(
 }
 
 /**
- * Month-end net to pay: gross salary − advances that month.
+ * Net salary for a work month: gross − advances that month.
+ * Calculated on last day of the work month; usually paid on 10–15 of the next month.
  * Negative = over-advanced (nothing further to pay / recovery).
- * Calculate on last day of month; advances already left bank during the month.
  */
 export function netSalaryPayable(
   driver: { id: string; kind: string; baseSalary: number; dailyRate: number },
