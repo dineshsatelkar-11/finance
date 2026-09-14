@@ -5,7 +5,14 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PaySheet } from "@/components/finance/pay-sheet";
 import { useFinance } from "@/lib/finance/store";
-import { driverBalance, inr, initials } from "@/lib/finance/format";
+import {
+  driverBalance,
+  inr,
+  initials,
+  monthAdvances,
+  netSalaryPayable,
+  suggestedSalary,
+} from "@/lib/finance/format";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/drivers")({ component: DriversPage });
@@ -14,6 +21,7 @@ function DriversPage() {
   const drivers = useFinance((s) => s.drivers);
   const month = useFinance((s) => s.month);
   const payouts = useFinance((s) => s.payouts);
+  const attendances = useFinance((s) => s.attendances);
   const [payOpen, setPayOpen] = useState(false);
   const [payId, setPayId] = useState<string | null>(null);
 
@@ -24,7 +32,7 @@ function DriversPage() {
       <div>
         <h1 className="font-display text-3xl font-medium tracking-tight">Drivers</h1>
         <p className="mt-1 text-sm text-muted">
-          Balance only — salary, UPI and profile live under More → Manage drivers.
+          Balance + month salary. Net pay at month end = salary − advances.
         </p>
       </div>
 
@@ -41,6 +49,11 @@ function DriversPage() {
         ) : (
           active.map((d) => {
             const bal = driverBalance(d, month, payouts);
+            const leave =
+              attendances.find((a) => a.driverId === d.id && a.month === month)?.leaveDays ?? 0;
+            const gross = suggestedSalary(d, leave);
+            const adv = monthAdvances(d.id, month, payouts);
+            const net = netSalaryPayable(d, leave, month, payouts);
             const balClass =
               bal < 0 ? "text-warn" : bal > 0 ? "text-ink" : "text-muted";
             return (
@@ -54,9 +67,15 @@ function DriversPage() {
                     <p className={cn("mt-0.5 text-lg font-medium tabular-nums tracking-tight", balClass)}>
                       {inr(bal)}
                     </p>
-                    <p className="text-[11px] text-subtle">
-                      Running balance · salary settled at month end
-                    </p>
+                    <p className="text-[11px] text-subtle">Running balance · advances only</p>
+                    {gross > 0 ? (
+                      <p className="mt-1 text-[11px] text-muted tabular-nums">
+                        Month salary {inr(gross)}
+                        {adv > 0 ? ` − advances ${inr(adv)}` : ""}
+                        {" → "}
+                        <span className={net < 0 ? "text-warn" : "text-ink"}>net {inr(net)}</span>
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2">

@@ -88,7 +88,7 @@ export function openWhatsApp(mobile: string, text: string) {
   return url;
 }
 
-/** Suggested salary for the month after leave deduction. */
+/** Gross month salary after leave deduction (display only — not the paid amount). */
 export function suggestedSalary(
   driver: { kind: string; baseSalary: number; dailyRate: number },
   leaveDays = 0,
@@ -101,6 +101,37 @@ export function suggestedSalary(
   }
   if (!(driver.baseSalary > 0)) return 0;
   return Math.round((driver.baseSalary * present) / workingDays);
+}
+
+/** Paid advances for a driver in a calendar month (YYYY-MM). */
+export function monthAdvances(
+  driverId: string,
+  month: string,
+  payouts: { driverId: string; kind: string; amount: number; status: string; date: string }[],
+) {
+  let sum = 0;
+  for (const p of payouts) {
+    if (p.driverId !== driverId || p.kind !== "advance" || p.status !== "paid") continue;
+    if (!p.date.startsWith(month)) continue;
+    sum += p.amount;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+/**
+ * Month-end net to pay: gross salary − advances that month.
+ * Negative = over-advanced (nothing further to pay / recovery).
+ * Calculate on last day of month; advances already left bank during the month.
+ */
+export function netSalaryPayable(
+  driver: { id: string; kind: string; baseSalary: number; dailyRate: number },
+  leaveDays: number,
+  month: string,
+  payouts: { driverId: string; kind: string; amount: number; status: string; date: string }[],
+) {
+  const gross = suggestedSalary(driver, leaveDays);
+  const adv = monthAdvances(driver.id, month, payouts);
+  return Math.round((gross - adv) * 100) / 100;
 }
 
 /** Rent after breakdown waiver. */
