@@ -194,7 +194,15 @@ function ensureWsbLoan015AndCc(): boolean {
   const bajajId = resolveBajajBankId();
   xfers.push(
     {
-      // Dinesh UPI on Warana = Bajaj → Warana (user said 04-Sep, not 01-Sep)
+      id: "xfer_bajaj_to_warana_5000_20260901",
+      fromBankId: bajajId,
+      toBankId: currentId,
+      amount: 5000,
+      date: "2026-09-01",
+      note: "Bajaj → Warana · Dinesh · 01-Sep statement",
+      createdAt: "2026-09-01T12:00:00.000Z",
+    },
+    {
       id: "xfer_bajaj_to_warana_5000_20260904",
       fromBankId: bajajId,
       toBankId: currentId,
@@ -213,15 +221,6 @@ function ensureWsbLoan015AndCc(): boolean {
       createdAt: "2026-09-09T12:00:00.000Z",
     },
   );
-
-  // Drop wrong-dated 01-Sep Bajaj seed if present (moved to 04-Sep)
-  const OLD_BAJAJ_01 = "xfer_bajaj_to_warana_5000_20260901";
-  if ((useFinance.getState().bankTransfers ?? []).some((x) => x.id === OLD_BAJAJ_01)) {
-    useFinance.setState((state) => ({
-      bankTransfers: (state.bankTransfers ?? []).filter((x) => x.id !== OLD_BAJAJ_01),
-    }));
-    changed = true;
-  }
 
   const existingXferIds = new Set((useFinance.getState().bankTransfers ?? []).map((x) => x.id));
   const missingXfers = xfers.filter((x) => !existingXferIds.has(x.id) && !deletedIds.has(x.id));
