@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { PaySheet } from "@/components/finance/pay-sheet";
 import { useFinance } from "@/lib/finance/store";
+import { rememberDeletedSeedId } from "@/lib/finance/sync";
 import { inr, shortDate } from "@/lib/finance/format";
 import type { Payout } from "@/lib/finance/types";
 
@@ -235,6 +236,7 @@ function PayoutsPage() {
                     size="sm"
                     onClick={() => {
                       if (!window.confirm("Delete this payout?")) return;
+                      rememberDeletedSeedId(p.id);
                       removePayout(p.id);
                       toast.message("Deleted");
                     }}
