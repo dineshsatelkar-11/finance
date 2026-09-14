@@ -34,7 +34,7 @@ const WSB_CC_BANK: BankAccount = {
   id: "bank_wsb_cc_000001",
   name: "Warana CC · …000001",
   isDefault: false,
-  opening: -20206.2,
+  opening: 0,
 };
 
 const WSB_CURRENT_BANK: BankAccount = {
@@ -144,6 +144,12 @@ function ensureWsbLoan015AndCc(): boolean {
   if (!s0.banks.some((b) => b.id === WSB_CC_BANK.id)) {
     s0.upsertBank(WSB_CC_BANK);
     changed = true;
+  } else {
+    const ccExisting = useFinance.getState().banks.find((b) => b.id === WSB_CC_BANK.id);
+    if (ccExisting && Math.abs((ccExisting.opening ?? 0) - 0) > 0.001) {
+      useFinance.getState().upsertBank({ ...ccExisting, opening: 0 });
+      changed = true;
+    }
   }
 
   const currentId = resolveCurrentBankId();
@@ -233,13 +239,7 @@ function ensureWsbLoan015AndCc(): boolean {
 
   const gstId = "exp_cc_gst_20260825";
   if (!deletedIds.has(gstId) && !useFinance.getState().expenses.some((e) => e.id === gstId)) {
-    const cc = useFinance.getState().banks.find((b) => b.id === ccId);
-    if (cc) {
-      useFinance.getState().upsertBank({
-        ...cc,
-        opening: Math.round((cc.opening + 16.2) * 100) / 100,
-      });
-    }
+    // GST / bank charges on CC → expense only (CC opening stays 0)
     useFinance.setState((state) => ({
       expenses: [
         {
