@@ -157,7 +157,6 @@ function ensureWsbLoan015AndCc(): boolean {
     changed = true;
   }
 
-  // Drivers used in statement batch
   const driverIds: Record<string, string> = {};
   for (const d of STMT_DRIVERS) {
     driverIds[d.name] = ensureDriverByName(d.name, d.id);
@@ -249,7 +248,6 @@ function ensureWsbLoan015AndCc(): boolean {
     changed = true;
   }
 
-  // --- 30 classified Warana Current rows (opening = end 26-Aug) ---
   type PSeed = Omit<Payout, "createdAt"> & { createdAt?: string };
   type ESeed = Omit<Expense, "createdAt"> & { createdAt?: string };
 
@@ -439,7 +437,8 @@ function applySnapshot(data: FinanceSnapshot) {
 }
 
 async function pushSnapshot(snap: FinanceSnapshot) {
-  return saveFinanceToDb({ data: snap });
+  // createServerFn without validator types input as undefined in this Start version
+  return saveFinanceToDb({ data: snap } as never);
 }
 
 export async function hydrateFinanceFromDb(): Promise<{
