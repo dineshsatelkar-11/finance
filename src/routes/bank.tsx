@@ -72,8 +72,12 @@ function BankPage() {
     for (const r of loanPayments) {
       if (r.status === "paid" && r.date.startsWith(month)) add(r.bankAccountId, r.amount);
     }
+    // Internal transfers out (from this bank)
+    for (const x of bankTransfers) {
+      if (x.date.startsWith(month)) add(x.fromBankId, x.amount);
+    }
     return map;
-  }, [payouts, expenses, loanPayments, month]);
+  }, [payouts, expenses, loanPayments, bankTransfers, month]);
 
   const inByBank = useMemo(() => {
     const map = new Map<string, number>();
@@ -86,8 +90,12 @@ function BankPage() {
         add(r.bankAccountId, r.amount);
       }
     }
+    // Internal transfers in (to this bank)
+    for (const x of bankTransfers) {
+      if (x.date.startsWith(month)) add(x.toBankId, x.amount);
+    }
     return map;
-  }, [receipts, payouts, month]);
+  }, [receipts, payouts, bankTransfers, month]);
 
   type LedgerSource = "payout" | "expense" | "loan" | "receipt" | "xfer";
 
