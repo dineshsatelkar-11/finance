@@ -47,8 +47,6 @@ function BankPage() {
   const [opening, setOpening] = useState("0");
   const [clearing, setClearing] = useState(false);
 
-  const selectedBank = banks.find((b) => b.id === selectedBankId) || null;
-
   function inScope(date: string) {
     if (selectedBankId) return true;
     return date.startsWith(month);
@@ -72,7 +70,6 @@ function BankPage() {
     for (const r of loanPayments) {
       if (r.status === "paid" && r.date.startsWith(month)) add(r.bankAccountId, r.amount);
     }
-    // Internal transfers out (from this bank)
     for (const x of bankTransfers) {
       if (x.date.startsWith(month)) add(x.fromBankId, x.amount);
     }
@@ -90,7 +87,6 @@ function BankPage() {
         add(r.bankAccountId, r.amount);
       }
     }
-    // Internal transfers in (to this bank)
     for (const x of bankTransfers) {
       if (x.date.startsWith(month)) add(x.toBankId, x.amount);
     }
@@ -312,7 +308,7 @@ function BankPage() {
         <div>
           <h1 className="page-title">Bank</h1>
           <p className="mt-1 text-sm text-muted">
-            Click a card to filter transactions. Opening can be negative (OD / overdrawn).
+            Tap a card to expand its transactions under the balance. Opening can be negative (OD).
           </p>
         </div>
         <Button type="button" onClick={openAdd}>
@@ -363,7 +359,7 @@ function BankPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3">
         {banks.map((b) => {
           const out = outByBank.get(b.id) || 0;
           const inn = inByBank.get(b.id) || 0;
@@ -382,7 +378,7 @@ function BankPage() {
                 <CardTitle className="text-base">{b.name}</CardTitle>
                 <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                   {b.isDefault ? <Badge tone="accent">Default</Badge> : null}
-                  {selected ? <Badge tone="ok">Showing</Badge> : null}
+                  {selected ? <Badge tone="ok">Open</Badge> : null}
                   {!b.isDefault ? (
                     <Button type="button" size="sm" variant="outline" onClick={() => setDefaultBank(b.id)}>
                       Default
@@ -411,7 +407,7 @@ function BankPage() {
               </div>
               <CardHint>
                 Opening {inr(b.opening)}
-                {b.opening < 0 ? " (OD)" : ""} · tap for transactions
+                {b.opening < 0 ? " (OD)" : ""} · tap to {selected ? "close" : "show"} transactions
               </CardHint>
               <div
                 className={cn(
@@ -425,6 +421,65 @@ function BankPage() {
                 Out {inr(out)}
                 {inn > 0 ? ` · In ${inr(inn)}` : ""} this month
               </p>
+
+              {selected ? (
+                <div className="mt-4 border-t border-line pt-3" onClick={(e) => e.stopPropagation()}>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-[12px] font-medium text-muted">Transactions</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[11px]"
+                      onClick={() => setSelectedBankId(null)}
+                    >
+                      Close
+                    </Button>
+                  </div>
+                  <ul className="divide-y divide-line">
+                    {ledgerRows.length === 0 ? (
+                      <li className="py-4 text-center text-sm text-muted">
+                        No transactions linked to this account yet.
+                      </li>
+                    ) : (
+                      ledgerRows.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between gap-2 py-2.5 text-sm">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium capitalize">{r.label}</div>
+                            <div className="text-[12px] text-muted">
+                              {shortDate(r.date)} · {r.sub}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <div
+                              className={
+                                r.kind === "in"
+                                  ? "tabular-nums text-ok"
+                                  : r.kind === "xfer"
+                                    ? "tabular-nums text-muted"
+                                    : "tabular-nums text-danger"
+                              }
+                            >
+                              {r.kind === "xfer" ? "↔" : r.kind === "in" ? "+" : "−"}
+                              {inr(r.amount)}
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2"
+                              title="Delete"
+                              onClick={() => deleteLedgerRow(r)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </div>
+              ) : null}
             </Card>
           );
         })}
@@ -438,70 +493,9 @@ function BankPage() {
             Add bank
           </Button>
         </Card>
+      ) : !selectedBankId ? (
+        <p className="text-center text-sm text-muted">Tap a bank card to see its transactions below the balance.</p>
       ) : null}
-
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <CardTitle>{selectedBank ? `${selectedBank.name} transactions` : "Ledger"}</CardTitle>
-            <CardHint>
-              {selectedBank
-                ? "Trash deletes the entry. Transfer delete removes both debit and credit."
-                : "This month across all accounts. Tap a bank card to filter."}
-            </CardHint>
-          </div>
-          {selectedBankId ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => setSelectedBankId(null)}>
-              Show all
-            </Button>
-          ) : null}
-        </div>
-        <ul className="mt-4 divide-y divide-line">
-          {ledgerRows.length === 0 ? (
-            <li className="py-6 text-center text-sm text-muted">
-              {selectedBank ? "No transactions linked to this account yet." : "No transactions this month."}
-            </li>
-          ) : (
-            ledgerRows.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-2 py-3 text-sm">
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium capitalize">{r.label}</div>
-                  <div className="text-[12px] text-muted">
-                    {shortDate(r.date)} · {r.sub}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <div
-                    className={
-                      r.kind === "in"
-                        ? "tabular-nums text-ok"
-                        : r.kind === "xfer"
-                          ? "tabular-nums text-muted"
-                          : "tabular-nums text-danger"
-                    }
-                  >
-                    {r.kind === "xfer" ? "↔" : r.kind === "in" ? "+" : "−"}
-                    {inr(r.amount)}
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8 px-2"
-                    title="Delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteLedgerRow(r);
-                    }}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              </li>
-            ))
-          )}
-        </ul>
-      </Card>
 
       <Button
         variant="outline"
