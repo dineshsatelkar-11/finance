@@ -51,6 +51,7 @@ const STMT_DRIVERS: { id: string; name: string }[] = [
   { id: "drv_vivek", name: "Vivek" },
   { id: "drv_ballu", name: "Ballu" },
   { id: "drv_karan", name: "Karan" },
+  { id: "drv_koli", name: "Koli" },
 ];
 
 function ensureDriverByName(name: string, preferredId: string): string {
@@ -226,6 +227,15 @@ function ensureWsbLoan015AndCc(): boolean {
       note: "Bajaj → Warana · Dinesh · 09-Sep statement",
       createdAt: "2026-09-09T12:00:00.000Z",
     },
+    {
+      id: "xfer_bajaj_to_warana_2000_20260910",
+      fromBankId: bajajId,
+      toBankId: currentId,
+      amount: 2000,
+      date: "2026-09-10",
+      note: "Bajaj → Warana · Dinesh · 10-Sep statement",
+      createdAt: "2026-09-10T12:00:00.000Z",
+    },
   );
 
   const existingXferIds = new Set((useFinance.getState().bankTransfers ?? []).map((x) => x.id));
@@ -239,7 +249,6 @@ function ensureWsbLoan015AndCc(): boolean {
 
   const gstId = "exp_cc_gst_20260825";
   if (!deletedIds.has(gstId) && !useFinance.getState().expenses.some((e) => e.id === gstId)) {
-    // GST / bank charges on CC → expense only (CC opening stays 0)
     useFinance.setState((state) => ({
       expenses: [
         {
@@ -350,6 +359,10 @@ function ensureWsbLoan015AndCc(): boolean {
     po("po_stmt_20260909_karan_adv_1968", "Karan", "advance", 1968, "2026-09-09", "Karan advance · statement"),
     po("po_stmt_20260909_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-09-09", "UPI Balaji/Sandeep · statement"),
     po("po_stmt_20260909_vikas_er_250", "Vikas", "extra_route", 250, "2026-09-09", "UPI Vikas · statement"),
+    po("po_stmt_20260910_koli_er_1000", "Koli", "extra_route", 1000, "2026-09-10", "Koli extra route · statement"),
+    po("po_stmt_20260911_vivek_adv_10000", "Vivek", "advance", 10000, "2026-09-11", "Vivek advance · statement"),
+    po("po_stmt_20260911_koli_er_500", "Koli", "extra_route", 500, "2026-09-11", "Koli extra route · statement"),
+    po("po_stmt_20260912_vikas_ret_4000", "Vikas", "return", 4000, "2026-09-12", "Vikas return · statement"),
   ];
 
   const expenses: ESeed[] = [
@@ -369,6 +382,12 @@ function ensureWsbLoan015AndCc(): boolean {
     ex("exp_stmt_20260909_process_fee_1298", "Other", "Process fee", 1298, "2026-09-09", "PROCESS FEE · loan · statement"),
     ex("exp_stmt_20260909_cibil_2537", "Other", "CIBIL", 2537, "2026-09-09", "CIBIL · loan · statement"),
     ex("exp_stmt_20260909_laxmi_motors_398029", "Other", "Laxmi Motors", 398029.5, "2026-09-09", "RTGS Laxmi Motors · vehicle · statement"),
+    ex("exp_stmt_20260910_vivek_tempo_drop_500", "Other", "Vivek · new tempo drop", 500, "2026-09-10", "New tempo drop · statement"),
+    ex("exp_stmt_20260910_tempo8026_200", "Other", "Tempo drop 8026", 200, "2026-09-10", "Tempo drop fleet 8026 · statement"),
+    ex("exp_stmt_20260910_ballu_tempo8026_100", "Other", "Ballu · tempo drop 8026", 100, "2026-09-10", "Ballu tempo drop 8026 · statement"),
+    ex("exp_stmt_20260911_anand_recharge_1102", "Other", "Anand recharge", 1102, "2026-09-11", "Airtel recharge Anand account · statement"),
+    ex("exp_stmt_20260911_tempo8646_9050", "Other", "Tempo 8646", 9050, "2026-09-11", "Tempo expense 8646 · Anubhaw Raj · statement"),
+    ex("exp_stmt_20260912_tempo_booking_800", "Other", "Tempo booking", 800, "2026-09-12", "Tempo expense booking · statement"),
   ];
 
   const existingPo = new Set(useFinance.getState().payouts.map((p) => p.id));
