@@ -51,7 +51,7 @@ const STMT_DRIVERS: { id: string; name: string }[] = [
   { id: "drv_vivek", name: "Vivek" },
   { id: "drv_ballu", name: "Ballu" },
   { id: "drv_karan", name: "Karan" },
-  { id: "drv_koli", name: "Koli" },
+  { id: "drv_devraj", name: "Devraj" },
 ];
 
 function ensureDriverByName(name: string, preferredId: string): string {
@@ -359,9 +359,9 @@ function ensureWsbLoan015AndCc(): boolean {
     po("po_stmt_20260909_karan_adv_1968", "Karan", "advance", 1968, "2026-09-09", "Karan advance · statement"),
     po("po_stmt_20260909_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-09-09", "UPI Balaji/Sandeep · statement"),
     po("po_stmt_20260909_vikas_er_250", "Vikas", "extra_route", 250, "2026-09-09", "UPI Vikas · statement"),
-    po("po_stmt_20260910_koli_er_1000", "Koli", "extra_route", 1000, "2026-09-10", "Koli extra route · statement"),
+    po("po_stmt_20260910_koli_er_1000", "Devraj", "extra_route", 1000, "2026-09-10", "Koli/Devraj extra route · statement"),
     po("po_stmt_20260911_vivek_adv_10000", "Vivek", "advance", 10000, "2026-09-11", "Vivek advance · statement"),
-    po("po_stmt_20260911_koli_er_500", "Koli", "extra_route", 500, "2026-09-11", "Koli extra route · statement"),
+    po("po_stmt_20260911_koli_er_500", "Devraj", "extra_route", 500, "2026-09-11", "Koli/Devraj extra route · statement"),
     po("po_stmt_20260912_vikas_ret_4000", "Vikas", "return", 4000, "2026-09-12", "Vikas return · statement"),
   ];
 
