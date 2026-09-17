@@ -127,19 +127,80 @@ export function monthAdvances(
 }
 
 /**
- * Net salary for a work month: gross − advances that month.
- * Calculated on last day of the work month; usually paid on 10–15 of the next month.
- * Negative = over-advanced (nothing further to pay / recovery).
+ * Tempo monthly rent for a driver — only if linked fleet charges rent.
+ * Not all drivers rent a tempo (company vehicle / no fleet → ₹0).
+ */
+export function driverTempoRent(
+  driver: { fleetId?: string | null },
+  fleets: { id: string; monthlyRent?: number; chargesRent?: boolean; name?: string }[],
+): { amount: number; fleetName: string | null } {
+  if (!driver.fleetId) return { amount: 0, fleetName: null };
+  const fleet = fleets.find((f) => f.id === driver.fleetId);
+  if (!fleet) return { amount: 0, fleetName: null };
+  const rent = Number(fleet.monthlyRent) || 0;
+  // chargesRent false → no rent; missing + rent>0 → charge (legacy)
+  if (fleet.chargesRent === false || !(rent > 0)) {
+    return { amount: 0, fleetName: fleet.name || null };
+  }
+  return { amount: Math.round(rent * 100) / 100, fleetName: fleet.name || null };
+}
+
+export type SalarySettlementInput = {
+  driver: { id: string; kind: string; baseSalary: number; dailyRate: number; fleetId?: string | null };
+  leaveDays: number;
+  month: string;
+  payouts: { driverId: string; kind: string; amount: number; status: string; date: string }[];
+  fleets: { id: string; monthlyRent?: number; chargesRent?: boolean; name?: string }[];
+  /** Optional bonus this settlement (₹). */
+  bonus?: number;
+  /** Negligence / other deduction this settlement (₹). */
+  deduction?: number;
+};
+
+export type SalarySettlement = {
+  gross: number;
+  bonus: number;
+  advances: number;
+  rent: number;
+  rentFleetName: string | null;
+  deduction: number;
+  /** gross + bonus − advances − rent − deduction */
+  net: number;
+};
+
+/** Full month-end settlement (same day calc). */
+export function salarySettlement(input: SalarySettlementInput): SalarySettlement {
+  const gross = suggestedSalary(input.driver, input.leaveDays);
+  const advances = monthAdvances(input.driver.id, input.month, input.payouts);
+  const { amount: rent, fleetName: rentFleetName } = driverTempoRent(input.driver, input.fleets);
+  const bonus = Math.max(0, Math.round((Number(input.bonus) || 0) * 100) / 100);
+  const deduction = Math.max(0, Math.round((Number(input.deduction) || 0) * 100) / 100);
+  const net = Math.round((gross + bonus - advances - rent - deduction) * 100) / 100;
+  return { gross, bonus, advances, rent, rentFleetName, deduction, net };
+}
+
+/**
+ * Net salary for a work month: gross − advances (no bonus/rent/deduction).
+ * Prefer salarySettlement when bonus / tempo rent / negligence apply.
  */
 export function netSalaryPayable(
-  driver: { id: string; kind: string; baseSalary: number; dailyRate: number },
+  driver: { id: string; kind: string; baseSalary: number; dailyRate: number; fleetId?: string | null },
   leaveDays: number,
   month: string,
   payouts: { driverId: string; kind: string; amount: number; status: string; date: string }[],
+  fleets: { id: string; monthlyRent?: number; chargesRent?: boolean; name?: string }[] = [],
+  bonus = 0,
+  deduction = 0,
 ) {
-  const gross = suggestedSalary(driver, leaveDays);
-  const adv = monthAdvances(driver.id, month, payouts);
-  return Math.round((gross - adv) * 100) / 100;
+  return salarySettlement({
+    driver,
+    leaveDays,
+    month,
+    payouts,
+    fleets,
+    bonus,
+    deduction,
+  }).net;
 }
 
 /** Rent after breakdown waiver. */
