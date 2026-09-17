@@ -126,23 +126,56 @@ export function monthAdvances(
   return Math.round(sum * 100) / 100;
 }
 
+/** Rent after breakdown waiver. */
+export function effectiveRent(
+  monthlyRent: number,
+  breakdownDays: number,
+  waiverAmount = 0,
+  daysInMonth = 30,
+) {
+  if (waiverAmount > 0) return Math.max(0, Math.round(monthlyRent - waiverAmount));
+  const days = Math.max(0, Math.min(daysInMonth, Math.floor(breakdownDays) || 0));
+  if (days <= 0 || !(monthlyRent > 0)) return monthlyRent;
+  const perDay = monthlyRent / daysInMonth;
+  return Math.max(0, Math.round(monthlyRent - perDay * days));
+}
+
 /**
  * Tempo monthly rent for a driver — only if linked fleet charges rent.
  * Not all drivers rent a tempo (company vehicle / no fleet → ₹0).
+ * Off days (maintenance / breakdown) pro-rate rent down.
  */
 export function driverTempoRent(
   driver: { fleetId?: string | null },
   fleets: { id: string; monthlyRent?: number; chargesRent?: boolean; name?: string }[],
-): { amount: number; fleetName: string | null } {
-  if (!driver.fleetId) return { amount: 0, fleetName: null };
+  opts?: {
+    breakdownDays?: number;
+    waiverAmount?: number;
+    daysInMonth?: number;
+  },
+): {
+  fullRent: number;
+  amount: number;
+  offDays: number;
+  fleetName: string | null;
+} {
+  if (!driver.fleetId) return { fullRent: 0, amount: 0, offDays: 0, fleetName: null };
   const fleet = fleets.find((f) => f.id === driver.fleetId);
-  if (!fleet) return { amount: 0, fleetName: null };
-  const rent = Number(fleet.monthlyRent) || 0;
-  // chargesRent false → no rent; missing + rent>0 → charge (legacy)
-  if (fleet.chargesRent === false || !(rent > 0)) {
-    return { amount: 0, fleetName: fleet.name || null };
+  if (!fleet) return { fullRent: 0, amount: 0, offDays: 0, fleetName: null };
+  const fullRent = Number(fleet.monthlyRent) || 0;
+  if (fleet.chargesRent === false || !(fullRent > 0)) {
+    return { fullRent: 0, amount: 0, offDays: 0, fleetName: fleet.name || null };
   }
-  return { amount: Math.round(rent * 100) / 100, fleetName: fleet.name || null };
+  const dim = Math.max(28, Math.min(31, Math.floor(opts?.daysInMonth || 30)));
+  const off = Math.max(0, Math.min(dim, Math.floor(opts?.breakdownDays || 0)));
+  const waiver = Math.max(0, Number(opts?.waiverAmount) || 0);
+  const amount = effectiveRent(fullRent, off, waiver, dim);
+  return {
+    fullRent: Math.round(fullRent * 100) / 100,
+    amount: Math.round(amount * 100) / 100,
+    offDays: off,
+    fleetName: fleet.name || null,
+  };
 }
 
 export type SalarySettlementInput = {
@@ -151,20 +184,21 @@ export type SalarySettlementInput = {
   month: string;
   payouts: { driverId: string; kind: string; amount: number; status: string; date: string }[];
   fleets: { id: string; monthlyRent?: number; chargesRent?: boolean; name?: string }[];
-  /** Optional bonus this settlement (₹). */
   bonus?: number;
-  /** Negligence / other deduction this settlement (₹). */
   deduction?: number;
+  /** Tempo off days (maintenance) — rent pro-rata for those days. */
+  rentOffDays?: number;
 };
 
 export type SalarySettlement = {
   gross: number;
   bonus: number;
   advances: number;
+  rentFull: number;
   rent: number;
+  rentOffDays: number;
   rentFleetName: string | null;
   deduction: number;
-  /** gross + bonus − advances − rent − deduction */
   net: number;
 };
 
@@ -172,11 +206,26 @@ export type SalarySettlement = {
 export function salarySettlement(input: SalarySettlementInput): SalarySettlement {
   const gross = suggestedSalary(input.driver, input.leaveDays);
   const advances = monthAdvances(input.driver.id, input.month, input.payouts);
-  const { amount: rent, fleetName: rentFleetName } = driverTempoRent(input.driver, input.fleets);
+  const dim = daysInMonth(input.month);
+  const rentInfo = driverTempoRent(input.driver, input.fleets, {
+    breakdownDays: input.rentOffDays || 0,
+    daysInMonth: dim > 0 ? dim : 30,
+  });
   const bonus = Math.max(0, Math.round((Number(input.bonus) || 0) * 100) / 100);
   const deduction = Math.max(0, Math.round((Number(input.deduction) || 0) * 100) / 100);
+  const rent = rentInfo.amount;
   const net = Math.round((gross + bonus - advances - rent - deduction) * 100) / 100;
-  return { gross, bonus, advances, rent, rentFleetName, deduction, net };
+  return {
+    gross,
+    bonus,
+    advances,
+    rentFull: rentInfo.fullRent,
+    rent,
+    rentOffDays: rentInfo.offDays,
+    rentFleetName: rentInfo.fleetName,
+    deduction,
+    net,
+  };
 }
 
 /**
@@ -201,20 +250,6 @@ export function netSalaryPayable(
     bonus,
     deduction,
   }).net;
-}
-
-/** Rent after breakdown waiver. */
-export function effectiveRent(
-  monthlyRent: number,
-  breakdownDays: number,
-  waiverAmount = 0,
-  daysInMonth = 30,
-) {
-  if (waiverAmount > 0) return Math.max(0, Math.round(monthlyRent - waiverAmount));
-  const days = Math.max(0, Math.min(daysInMonth, Math.floor(breakdownDays) || 0));
-  if (days <= 0 || !(monthlyRent > 0)) return monthlyRent;
-  const perDay = monthlyRent / daysInMonth;
-  return Math.max(0, Math.round(monthlyRent - perDay * days));
 }
 
 /**
