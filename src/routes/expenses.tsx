@@ -16,7 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { defaultBankId, useFinance } from "@/lib/finance/store";
-import { inr, shortDate, todayISO, uid } from "@/lib/finance/format";
+import { inr, monthISO, monthLabel, prevMonthISO, shortDate, todayISO, uid } from "@/lib/finance/format";
 import type { Expense, PayMode } from "@/lib/finance/types";
 import { maskVpa } from "@/lib/finance/upi";
 
@@ -50,18 +50,34 @@ function ExpensesPage() {
   const [editNote, setEditNote] = useState("");
   const [editCat, setEditCat] = useState("Fuel");
   const [catFilter, setCatFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const monthOptions = useMemo(() => {
+    const opts: string[] = [];
+    let ym = monthISO();
+    for (let i = 0; i < 12; i++) {
+      opts.push(ym);
+      ym = prevMonthISO(ym);
+    }
+    return opts;
+  }, []);
 
   const rows = useMemo(
     () =>
       expenses
         .filter((e) => !catFilter || e.category === catFilter)
+        .filter((e) => !monthFilter || e.date.startsWith(monthFilter))
+        .filter((e) => !dateFrom || e.date >= dateFrom)
+        .filter((e) => !dateTo || e.date <= dateTo)
         .slice()
         .sort((a, b) => {
           const d = b.date.localeCompare(a.date);
           if (d !== 0) return d;
           return (b.createdAt || "").localeCompare(a.createdAt || "");
         }),
-    [expenses, catFilter],
+    [expenses, catFilter, monthFilter, dateFrom, dateTo],
   );
   const total = rows.filter((e) => e.status === "paid").reduce((s, e) => s + e.amount, 0);
   const v = vendorId !== "none" ? vendors.find((x) => x.id === vendorId) : undefined;
@@ -148,7 +164,10 @@ function ExpensesPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-medium tracking-tight">Expenses</h1>
-          <p className="mt-1 text-sm text-muted">Total paid {inr(total)}.</p>
+          <p className="mt-1 text-sm text-muted">
+            Total paid (filtered) <span className="font-medium tabular-nums text-ink">{inr(total)}</span>
+            <span className="text-muted"> · {rows.length} row(s)</span>
+          </p>
         </div>
         <Button type="button" onClick={openAdd}>
           <Plus className="size-4" /> Add expense
@@ -276,6 +295,57 @@ function ExpensesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <div>
+          <Label className="text-[11px] text-muted">Month</Label>
+          <select
+            className="mt-0.5 h-9 rounded-md border border-line bg-raised px-2 text-sm"
+            value={monthFilter}
+            onChange={(ev) => setMonthFilter(ev.target.value)}
+          >
+            <option value="">All months</option>
+            {monthOptions.map((ym) => (
+              <option key={ym} value={ym}>
+                {monthLabel(ym)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label className="text-[11px] text-muted">From date</Label>
+          <Input
+            type="date"
+            className="mt-0.5 h-9"
+            value={dateFrom}
+            onChange={(ev) => setDateFrom(ev.target.value)}
+          />
+        </div>
+        <div>
+          <Label className="text-[11px] text-muted">To date</Label>
+          <Input
+            type="date"
+            className="mt-0.5 h-9"
+            value={dateTo}
+            onChange={(ev) => setDateTo(ev.target.value)}
+          />
+        </div>
+        {monthFilter || dateFrom || dateTo ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-9"
+            onClick={() => {
+              setMonthFilter("");
+              setDateFrom("");
+              setDateTo("");
+            }}
+          >
+            Clear dates
+          </Button>
+        ) : null}
+      </div>
 
       <div className="flex flex-wrap gap-1.5">
         <button
