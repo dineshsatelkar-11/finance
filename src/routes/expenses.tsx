@@ -54,7 +54,6 @@ function ExpensesPage() {
   const rows = useMemo(
     () =>
       expenses
-        .filter((e) => e.date.startsWith(month))
         .filter((e) => !catFilter || e.category === catFilter)
         .slice()
         .sort((a, b) => {
@@ -62,7 +61,7 @@ function ExpensesPage() {
           if (d !== 0) return d;
           return (b.createdAt || "").localeCompare(a.createdAt || "");
         }),
-    [expenses, month, catFilter],
+    [expenses, catFilter],
   );
   const total = rows.filter((e) => e.status === "paid").reduce((s, e) => s + e.amount, 0);
   const v = vendorId !== "none" ? vendors.find((x) => x.id === vendorId) : undefined;
@@ -149,7 +148,7 @@ function ExpensesPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-medium tracking-tight">Expenses</h1>
-          <p className="mt-1 text-sm text-muted">This month {inr(total)}.</p>
+          <p className="mt-1 text-sm text-muted">Total paid {inr(total)}.</p>
         </div>
         <Button type="button" onClick={openAdd}>
           <Plus className="size-4" /> Add expense
@@ -311,8 +310,8 @@ function ExpensesPage() {
           <Card>
             <p className="text-sm text-muted">
               {catFilter
-                ? `No ${catFilter} expenses this month.`
-                : "No expenses this month. Tap Add expense to record one."}
+                ? `No ${catFilter} expenses.`
+                : "No expenses yet. Tap Add expense to record one."}
             </p>
           </Card>
         ) : (
