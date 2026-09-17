@@ -95,15 +95,17 @@ export function AppShell({ children }: { children: ReactNode }) {
               Finance desk
             </div>
           </div>
-          <label className="flex shrink-0 items-center gap-1.5 text-sm text-muted">
-            <span className="sr-only sm:not-sr-only sm:inline">Month</span>
-            <input
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="h-9 max-w-[9.5rem] rounded-md border border-line bg-raised px-1.5 text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25 sm:max-w-none sm:px-2 sm:text-sm"
-            />
-          </label>
+          {pathname === "/" ? (
+            <label className="flex shrink-0 items-center gap-1.5 text-sm text-muted">
+              <span className="sr-only sm:not-sr-only sm:inline">Month</span>
+              <input
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="h-9 max-w-[9.5rem] rounded-md border border-line bg-raised px-1.5 text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25 sm:max-w-none sm:px-2 sm:text-sm"
+              />
+            </label>
+          ) : null}
         </div>
 
         {/* Desktop nav */}
@@ -136,7 +138,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             {dbNote}
           </p>
         ) : null}
-        <p className="mb-3 text-[12px] text-subtle sm:mb-4">{monthLabel(month)}</p>
+        {pathname === "/" ? (
+          <p className="mb-3 text-[12px] text-subtle sm:mb-4">{monthLabel(month)}</p>
+        ) : null}
         <div className="min-w-0 w-full">{children}</div>
       </main>
 
