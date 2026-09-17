@@ -18,7 +18,6 @@ import {
   prevMonthISO,
   salarySettlement,
   todayISO,
-  WORKING_DAYS,
 } from "@/lib/finance/format";
 import type { PayMode, PayoutKind } from "@/lib/finance/types";
 import {
@@ -73,10 +72,10 @@ export function PaySheet({
   const [note, setNote] = useState("");
   const [step, setStep] = useState<"form" | "confirm">("form");
   const [pendingId, setPendingId] = useState<string | null>(null);
-  /** Work month the salary is for (calculated last day of that month; paid next month ~10–15). */
   const [salaryForMonth, setSalaryForMonth] = useState(prevMonthISO());
   const [bonusAmt, setBonusAmt] = useState("0");
   const [deductionAmt, setDeductionAmt] = useState("0");
+  const [rentOffDays, setRentOffDays] = useState("0");
   const fleets = useFinance((s) => s.fleets);
 
   useEffect(() => {
@@ -84,7 +83,6 @@ export function PaySheet({
     const st = useFinance.getState();
     const list = st.drivers;
     const d = list.find((x) => x.id === driverId) || list.find((x) => x.active) || list[0];
-    // Default: settle previous calendar month (paid this month around 10–15)
     const workMonth = prevMonthISO(monthISO());
     const att = st.attendances.find((a) => a.driverId === d?.id && a.month === workMonth);
     const leaves = att?.leaveDays ?? 0;
@@ -94,6 +92,7 @@ export function PaySheet({
     setLeaveDays(String(leaves));
     setBonusAmt("0");
     setDeductionAmt("0");
+    setRentOffDays("0");
     setAmount("");
     setDate(todayISO());
     setMode("upi");
@@ -111,6 +110,7 @@ export function PaySheet({
   const leaveN = Math.max(0, Math.floor(parseFloat(leaveDays) || 0));
   const bonusN = Math.max(0, parseFloat(bonusAmt) || 0);
   const deductionN = Math.max(0, parseFloat(deductionAmt) || 0);
+  const rentOffN = Math.max(0, Math.floor(parseFloat(rentOffDays) || 0));
   const settle = driver
     ? salarySettlement({
         driver,
@@ -120,16 +120,25 @@ export function PaySheet({
         fleets,
         bonus: bonusN,
         deduction: deductionN,
+        rentOffDays: rentOffN,
       })
     : null;
   const salaryGross = settle?.gross ?? 0;
   const advancesThisMonth = settle?.advances ?? 0;
   const tempoRent = settle?.rent ?? 0;
+  const rentFull = settle?.rentFull ?? 0;
   const rentFleetName = settle?.rentFleetName ?? null;
   const salaryNet = settle?.net ?? 0;
   const os = detectMobileOs();
 
-  function applySalaryNet(d = driver, leaves = leaveN, ym = salaryForMonth, bonus = bonusN, ded = deductionN) {
+  function applySalaryNet(
+    d = driver,
+    leaves = leaveN,
+    ym = salaryForMonth,
+    bonus = bonusN,
+    ded = deductionN,
+    offDays = rentOffN,
+  ) {
     if (!d) return 0;
     const s = salarySettlement({
       driver: d,
@@ -139,13 +148,18 @@ export function PaySheet({
       fleets,
       bonus,
       deduction: ded,
+      rentOffDays: offDays,
     });
     setAmount(String(Math.max(0, s.net)));
     const parts = [
       `Salary ${monthLabel(ym)}`,
       s.bonus > 0 ? `bonus ${s.bonus}` : null,
       s.advances > 0 ? `adv −${s.advances}` : null,
-      s.rent > 0 ? `rent −${s.rent}` : null,
+      s.rentFull > 0
+        ? s.rentOffDays > 0
+          ? `rent −${s.rent} (${s.rentFull} − ${s.rentOffDays}d maint)`
+          : `rent −${s.rent}`
+        : null,
       s.deduction > 0 ? `deduct −${s.deduction}` : null,
       `net ${Math.max(0, s.net)}`,
     ].filter(Boolean);
@@ -356,7 +370,8 @@ export function PaySheet({
                       setLeaveDays(String(leaves));
                       setBonusAmt("0");
                       setDeductionAmt("0");
-                      applySalaryNet(driver, leaves, workM, 0, 0);
+                      setRentOffDays("0");
+                      applySalaryNet(driver, leaves, workM, 0, 0, 0);
                     }
                   }}
                 >
@@ -493,15 +508,52 @@ export function PaySheet({
                     <span className="text-muted">− Advances ({monthLabel(salaryForMonth)})</span>
                     <span className="tabular-nums text-warn">− {inr(advancesThisMonth)}</span>
                   </div>
-                  <div className="flex justify-between gap-2">
-                    <span className="text-muted">
-                      − Tempo rent
-                      {rentFleetName ? ` · ${rentFleetName}` : ""}
-                      {tempoRent <= 0 ? " (none)" : ""}
-                    </span>
-                    <span className="tabular-nums text-warn">− {inr(tempoRent)}</span>
-                  </div>
-                  {tempoRent <= 0 ? (
+                  {rentFull > 0 ? (
+                    <div className="space-y-1.5 rounded border border-line/80 bg-canvas/40 p-2">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted">
+                          Tempo rent full{rentFleetName ? ` · ${rentFleetName}` : ""}
+                        </span>
+                        <span className="tabular-nums">{inr(rentFull)}</span>
+                      </div>
+                      <div>
+                        <Label htmlFor="pay-rent-off" className="text-[11px]">
+                          Off days (maintenance / not working)
+                        </Label>
+                        <Input
+                          id="pay-rent-off"
+                          inputMode="numeric"
+                          className="mt-1 h-9 tabular-nums"
+                          value={rentOffDays}
+                          onChange={(e) => {
+                            setRentOffDays(e.target.value);
+                            const off = Math.max(0, Math.floor(parseFloat(e.target.value) || 0));
+                            if (driver) {
+                              applySalaryNet(driver, leaveN, salaryForMonth, bonusN, deductionN, off);
+                            }
+                          }}
+                        />
+                        <p className="mt-1 text-[11px] text-muted">
+                          Pro-rata: rent ÷ days in month × off days waived
+                        </p>
+                      </div>
+                      <div className="flex justify-between gap-2 font-medium">
+                        <span className="text-muted">− Rent charged</span>
+                        <span className="tabular-nums text-warn">− {inr(tempoRent)}</span>
+                      </div>
+                      {rentOffN > 0 ? (
+                        <p className="text-[11px] text-ok">
+                          Waived ~{inr(Math.max(0, rentFull - tempoRent))} for {rentOffN} day(s)
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted">− Tempo rent (none)</span>
+                      <span className="tabular-nums text-warn">− {inr(0)}</span>
+                    </div>
+                  )}
+                  {rentFull <= 0 ? (
                     <p className="text-[11px] text-muted">
                       Rent only if driver is linked to a fleet that charges rent. Others stay ₹0.
                     </p>
@@ -514,11 +566,7 @@ export function PaySheet({
                   ) : null}
                   <div className="flex justify-between gap-2 border-t border-line pt-1.5 font-medium">
                     <span>Net to pay</span>
-                    <span
-                      className={
-                        salaryNet < 0 ? "tabular-nums text-warn" : "tabular-nums text-ink"
-                      }
-                    >
+                    <span className={salaryNet < 0 ? "tabular-nums text-warn" : "tabular-nums text-ink"}>
                       {inr(salaryNet)}
                     </span>
                   </div>
@@ -588,12 +636,7 @@ export function PaySheet({
                   <Smartphone className="size-4 text-accent" />
                   UPI for {driver?.name || "driver"}
                 </div>
-                <UpiField
-                  value={upi}
-                  onChange={setUpi}
-                  payeeName={payee}
-                  onPayeeNameChange={setPayee}
-                />
+                <UpiField value={upi} onChange={setUpi} payeeName={payee} onPayeeNameChange={setPayee} />
                 <label className="flex items-center gap-2 text-[12px] text-muted">
                   <input
                     type="checkbox"
@@ -637,9 +680,7 @@ export function PaySheet({
                 <span className="text-muted">Amount</span>
                 <span className="font-medium tabular-nums">{inr(parseFloat(amount) || 0)}</span>
               </div>
-              {note ? (
-                <p className="mt-2 text-[12px] text-muted">{note}</p>
-              ) : null}
+              {note ? <p className="mt-2 text-[12px] text-muted">{note}</p> : null}
             </div>
 
             {mode === "upi" && vpa ? (
