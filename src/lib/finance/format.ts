@@ -161,6 +161,8 @@ export function effectiveRent(
  *
  * Positive = company still owes driver; negative = over-advanced / driver owes.
  *
+ * All-time (not month-scoped). Month arg kept for call-site compatibility.
+ *
  * - Advance: money given early → reduces balance.
  * - Return: driver gives money back → opposite of advance (increases balance).
  * - Fine: driver owes company → reduces balance.
@@ -168,7 +170,7 @@ export function effectiveRent(
  */
 export function driverBalance(
   driver: { id: string; kind?: string; baseSalary?: number; dailyRate?: number; openingBalance?: number },
-  month: string,
+  _month: string,
   payouts: { driverId: string; kind: string; amount: number; status: string; date: string }[],
   _leaveDays = 0,
 ) {
@@ -177,7 +179,7 @@ export function driverBalance(
   let fine = 0;
   let returned = 0;
   for (const p of payouts) {
-    if (p.driverId !== driver.id || !p.date.startsWith(month) || p.status !== "paid") continue;
+    if (p.driverId !== driver.id || p.status !== "paid") continue;
     if (p.kind === "fine") fine += p.amount;
     else if (p.kind === "return") returned += p.amount;
     else if (p.kind === "advance") advances += p.amount;
