@@ -361,6 +361,7 @@ function ensureWsbLoan015AndCc(): boolean {
     po("po_stmt_20260909_vikas_er_250", "Vikas", "extra_route", 250, "2026-09-09", "UPI Vikas · statement"),
     po("po_stmt_20260910_koli_er_1000", "Devraj", "extra_route", 1000, "2026-09-10", "Koli/Devraj extra route · statement"),
     po("po_stmt_20260911_vivek_adv_10000", "Vivek", "advance", 10000, "2026-09-11", "Vivek advance · statement"),
+    po("po_stmt_20260911_anand_adv_1102", "Anand", "advance", 1102, "2026-09-11", "Airtel recharge · Anand advance · statement"),
     po("po_stmt_20260911_koli_er_500", "Devraj", "extra_route", 500, "2026-09-11", "Koli/Devraj extra route · statement"),
     po("po_stmt_20260911_vivek_er_250", "Vivek", "extra_route", 250, "2026-09-11", "UPI Vivek · statement"),
     po("po_stmt_20260911_vikas_er_250", "Vikas", "extra_route", 250, "2026-09-11", "UPI Vikas · statement"),
@@ -387,11 +388,19 @@ function ensureWsbLoan015AndCc(): boolean {
     ex("exp_stmt_20260910_vivek_tempo_drop_500", "Other", "Vivek · new tempo drop", 500, "2026-09-10", "New tempo drop · statement"),
     ex("exp_stmt_20260910_tempo8026_200", "Other", "Tempo drop 8026", 200, "2026-09-10", "Tempo drop fleet 8026 · statement"),
     ex("exp_stmt_20260910_ballu_tempo8026_100", "Other", "Ballu · tempo drop 8026", 100, "2026-09-10", "Ballu tempo drop 8026 · statement"),
-    ex("exp_stmt_20260911_anand_recharge_1102", "Other", "Anand recharge", 1102, "2026-09-11", "Airtel recharge Anand account · statement"),
     ex("exp_stmt_20260911_tempo8646_9050", "Other", "Tempo 8646", 9050, "2026-09-11", "Tempo expense 8646 · Anubhaw Raj · statement"),
     ex("exp_stmt_20260912_tempo_booking_800", "Other", "Tempo booking", 800, "2026-09-12", "Tempo expense booking · statement"),
     ex("exp_stmt_20260911_test_1", "Other", "Testing", 1, "2026-09-11", "₹1 testing · statement"),
   ];
+
+  // Reclassify: 11-Sep ₹1102 was expense → Anand advance
+  const WRONG_ANAND_EXP = "exp_stmt_20260911_anand_recharge_1102";
+  if (useFinance.getState().expenses.some((e) => e.id === WRONG_ANAND_EXP)) {
+    useFinance.setState((state) => ({
+      expenses: state.expenses.filter((e) => e.id !== WRONG_ANAND_EXP),
+    }));
+    changed = true;
+  }
 
   const existingPo = new Set(useFinance.getState().payouts.map((p) => p.id));
   const missingPo = payouts.filter((p) => !existingPo.has(p.id) && !deletedIds.has(p.id));
