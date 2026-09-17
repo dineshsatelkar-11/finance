@@ -68,7 +68,8 @@ function BankPage() {
       if (r.status === "paid") add(r.bankAccountId, r.amount);
     }
     for (const r of loanPayments) {
-      if (r.status === "paid") add(r.bankAccountId, r.amount);
+      // Disbursement credits the bank; EMI / interest / prepay debit it
+      if (r.status === "paid" && r.kind !== "disbursement") add(r.bankAccountId, r.amount);
     }
     for (const x of bankTransfers) {
       add(x.fromBankId, x.amount);
@@ -87,11 +88,16 @@ function BankPage() {
         add(r.bankAccountId, r.amount);
       }
     }
+    for (const r of loanPayments) {
+      if (r.status === "paid" && r.kind === "disbursement") {
+        add(r.bankAccountId, r.amount);
+      }
+    }
     for (const x of bankTransfers) {
       add(x.toBankId, x.amount);
     }
     return map;
-  }, [receipts, payouts, bankTransfers]);
+  }, [receipts, payouts, loanPayments, bankTransfers]);
 
   type LedgerSource = "payout" | "expense" | "loan" | "receipt" | "xfer";
 
@@ -141,14 +147,17 @@ function BankPage() {
     for (const r of loanPayments) {
       if (r.status !== "paid" || !inScope(r.date) || !forBank(r.bankAccountId)) continue;
       const loan = loans.find((l) => l.id === r.loanId);
+      const isDisb = r.kind === "disbursement";
       rows.push({
         id: r.id,
         sourceId: r.id,
         source: "loan",
         date: r.date,
-        kind: "out",
+        kind: isDisb ? "in" : "out",
         label: `${loan?.name || "Loan"} · ${String(r.kind).replace("_", " ")}`,
-        sub: `Loan · ${r.mode.toUpperCase()}`,
+        sub: isDisb
+          ? `Loan credit · ${r.mode.toUpperCase()}`
+          : `Loan · ${r.mode.toUpperCase()}`,
         amount: r.amount,
       });
     }
