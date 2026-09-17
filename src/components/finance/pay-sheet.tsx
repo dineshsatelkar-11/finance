@@ -12,13 +12,11 @@ import { UpiQr } from "@/components/finance/upi-qr";
 import { defaultBankId, useFinance } from "@/lib/finance/store";
 import {
   inr,
-  monthAdvances,
   monthISO,
   monthLabel,
-  netSalaryPayable,
   openWhatsApp,
   prevMonthISO,
-  suggestedSalary,
+  salarySettlement,
   todayISO,
   WORKING_DAYS,
 } from "@/lib/finance/format";
@@ -77,6 +75,9 @@ export function PaySheet({
   const [pendingId, setPendingId] = useState<string | null>(null);
   /** Work month the salary is for (calculated last day of that month; paid next month ~10–15). */
   const [salaryForMonth, setSalaryForMonth] = useState(prevMonthISO());
+  const [bonusAmt, setBonusAmt] = useState("0");
+  const [deductionAmt, setDeductionAmt] = useState("0");
+  const fleets = useFinance((s) => s.fleets);
 
   useEffect(() => {
     if (!open) return;
@@ -91,6 +92,8 @@ export function PaySheet({
     setKind("advance");
     setSalaryForMonth(workMonth);
     setLeaveDays(String(leaves));
+    setBonusAmt("0");
+    setDeductionAmt("0");
     setAmount("");
     setDate(todayISO());
     setMode("upi");
@@ -106,12 +109,49 @@ export function PaySheet({
   const payouts = useFinance((s) => s.payouts);
   const driver = drivers.find((d) => d.id === id);
   const leaveN = Math.max(0, Math.floor(parseFloat(leaveDays) || 0));
-  /** Gross for the work month (display only). */
-  const salaryGross = driver ? suggestedSalary(driver, leaveN) : 0;
-  const advancesThisMonth = driver ? monthAdvances(driver.id, salaryForMonth, payouts) : 0;
-  /** Net = work-month salary − that month’s advances (paid ~10–15 next month). */
-  const salaryNet = driver ? netSalaryPayable(driver, leaveN, salaryForMonth, payouts) : 0;
+  const bonusN = Math.max(0, parseFloat(bonusAmt) || 0);
+  const deductionN = Math.max(0, parseFloat(deductionAmt) || 0);
+  const settle = driver
+    ? salarySettlement({
+        driver,
+        leaveDays: leaveN,
+        month: salaryForMonth,
+        payouts,
+        fleets,
+        bonus: bonusN,
+        deduction: deductionN,
+      })
+    : null;
+  const salaryGross = settle?.gross ?? 0;
+  const advancesThisMonth = settle?.advances ?? 0;
+  const tempoRent = settle?.rent ?? 0;
+  const rentFleetName = settle?.rentFleetName ?? null;
+  const salaryNet = settle?.net ?? 0;
   const os = detectMobileOs();
+
+  function applySalaryNet(d = driver, leaves = leaveN, ym = salaryForMonth, bonus = bonusN, ded = deductionN) {
+    if (!d) return 0;
+    const s = salarySettlement({
+      driver: d,
+      leaveDays: leaves,
+      month: ym,
+      payouts,
+      fleets,
+      bonus,
+      deduction: ded,
+    });
+    setAmount(String(Math.max(0, s.net)));
+    const parts = [
+      `Salary ${monthLabel(ym)}`,
+      s.bonus > 0 ? `bonus ${s.bonus}` : null,
+      s.advances > 0 ? `adv −${s.advances}` : null,
+      s.rent > 0 ? `rent −${s.rent}` : null,
+      s.deduction > 0 ? `deduct −${s.deduction}` : null,
+      `net ${Math.max(0, s.net)}`,
+    ].filter(Boolean);
+    setNote(parts.join(" · "));
+    return s.net;
+  }
 
   const vpa = useMemo(() => {
     const p = parseUpiPayload(upi);
@@ -281,8 +321,7 @@ export function PaySheet({
                   setPayee(d?.upiPayeeName || d?.name || "");
                   setLeaveDays(String(leaves));
                   if (kind === "salary" && d) {
-                    const net = netSalaryPayable(d, leaves, salaryForMonth, payouts);
-                    setAmount(String(Math.max(0, net)));
+                    applySalaryNet(d, leaves, salaryForMonth, bonusN, deductionN);
                   }
                 }}
               >
@@ -315,11 +354,9 @@ export function PaySheet({
                       const att = attendances.find((a) => a.driverId === driver.id && a.month === workM);
                       const leaves = att?.leaveDays ?? leaveN;
                       setLeaveDays(String(leaves));
-                      const net = netSalaryPayable(driver, leaves, workM, payouts);
-                      setAmount(String(Math.max(0, net)));
-                      setNote(
-                        `Salary for ${monthLabel(workM)} · paid ~10–15 next month · net = salary − advances`,
-                      );
+                      setBonusAmt("0");
+                      setDeductionAmt("0");
+                      applySalaryNet(driver, leaves, workM, 0, 0);
                     }
                   }}
                 >
@@ -350,9 +387,9 @@ export function PaySheet({
             {kind === "salary" ? (
               <div className="rounded-lg border border-line bg-canvas/60 p-3 space-y-3">
                 <p className="text-[12px] text-muted">
-                  Calculated on <span className="font-medium text-ink">last day of the work month</span>
-                  ; usually paid on <span className="font-medium text-ink">10–15 of the next month</span>
-                  . Pay only the <span className="font-medium text-ink">net</span> (salary − advances).
+                  Month-end settlement (same day):{" "}
+                  <span className="font-medium text-ink">gross + bonus − advances − tempo rent − deduction</span>
+                  . Usually paid 10–15 of next month.
                 </p>
                 <div>
                   <Label>Salary for month</Label>
@@ -364,9 +401,7 @@ export function PaySheet({
                       const att = attendances.find((a) => a.driverId === driver.id && a.month === ym);
                       const leaves = att?.leaveDays ?? 0;
                       setLeaveDays(String(leaves));
-                      const net = netSalaryPayable(driver, leaves, ym, payouts);
-                      setAmount(String(Math.max(0, net)));
-                      setNote(`Salary for ${monthLabel(ym)} · paid ~10–15 next month`);
+                      applySalaryNet(driver, leaves, ym, bonusN, deductionN);
                     }}
                   >
                     <SelectTrigger>
@@ -385,13 +420,10 @@ export function PaySheet({
                       })}
                     </SelectContent>
                   </Select>
-                  <p className="mt-1 text-[11px] text-muted">
-                    Work month · payment date below can be 10–15 of the following month
-                  </p>
                 </div>
                 <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3">
                   <div>
-                    <Label htmlFor="pay-leave">Leave days ({monthLabel(salaryForMonth)})</Label>
+                    <Label htmlFor="pay-leave">Leave days</Label>
                     <Input
                       id="pay-leave"
                       inputMode="numeric"
@@ -402,46 +434,97 @@ export function PaySheet({
                         setLeaveDays(v);
                         const n = Math.max(0, Math.floor(parseFloat(v) || 0));
                         if (driver) {
-                          const net = netSalaryPayable(driver, n, salaryForMonth, payouts);
-                          setAmount(String(Math.max(0, net)));
                           setAttendance(driver.id, salaryForMonth, n);
-                          setNote(
-                            n > 0
-                              ? `${monthLabel(salaryForMonth)} · leave ${n} · net = salary − advances`
-                              : `${monthLabel(salaryForMonth)} · net = salary − advances`,
-                          );
+                          applySalaryNet(driver, n, salaryForMonth, bonusN, deductionN);
                         }
                       }}
                     />
                   </div>
                   <div>
-                    <Label>Month salary (gross)</Label>
+                    <Label>Gross salary</Label>
                     <div className="flex h-11 items-center font-medium tabular-nums text-ink">
                       {inr(salaryGross)}
                     </div>
-                    <p className="text-[11px] text-muted">For {monthLabel(salaryForMonth)}</p>
+                    <p className="text-[11px] text-muted">After leave · {monthLabel(salaryForMonth)}</p>
                   </div>
                 </div>
-                <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 text-sm">
+                <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3">
                   <div>
-                    <p className="text-[11px] text-muted">Advances in that month</p>
-                    <p className="font-medium tabular-nums text-warn">− {inr(advancesThisMonth)}</p>
+                    <Label htmlFor="pay-bonus">Bonus (₹)</Label>
+                    <Input
+                      id="pay-bonus"
+                      inputMode="decimal"
+                      className="tabular-nums"
+                      value={bonusAmt}
+                      onChange={(e) => {
+                        setBonusAmt(e.target.value);
+                        const b = Math.max(0, parseFloat(e.target.value) || 0);
+                        if (driver) applySalaryNet(driver, leaveN, salaryForMonth, b, deductionN);
+                      }}
+                    />
                   </div>
                   <div>
-                    <p className="text-[11px] text-muted">Net to pay</p>
-                    <p
+                    <Label htmlFor="pay-deduct">Deduction / negligence (₹)</Label>
+                    <Input
+                      id="pay-deduct"
+                      inputMode="decimal"
+                      className="tabular-nums"
+                      value={deductionAmt}
+                      onChange={(e) => {
+                        setDeductionAmt(e.target.value);
+                        const d = Math.max(0, parseFloat(e.target.value) || 0);
+                        if (driver) applySalaryNet(driver, leaveN, salaryForMonth, bonusN, d);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5 rounded-md border border-line bg-raised/50 p-2.5 text-sm">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted">Gross</span>
+                    <span className="tabular-nums">{inr(salaryGross)}</span>
+                  </div>
+                  {bonusN > 0 ? (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted">+ Bonus</span>
+                      <span className="tabular-nums text-ok">+ {inr(bonusN)}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted">− Advances ({monthLabel(salaryForMonth)})</span>
+                    <span className="tabular-nums text-warn">− {inr(advancesThisMonth)}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted">
+                      − Tempo rent
+                      {rentFleetName ? ` · ${rentFleetName}` : ""}
+                      {tempoRent <= 0 ? " (none)" : ""}
+                    </span>
+                    <span className="tabular-nums text-warn">− {inr(tempoRent)}</span>
+                  </div>
+                  {tempoRent <= 0 ? (
+                    <p className="text-[11px] text-muted">
+                      Rent only if driver is linked to a fleet that charges rent. Others stay ₹0.
+                    </p>
+                  ) : null}
+                  {deductionN > 0 ? (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted">− Deduction / negligence</span>
+                      <span className="tabular-nums text-warn">− {inr(deductionN)}</span>
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between gap-2 border-t border-line pt-1.5 font-medium">
+                    <span>Net to pay</span>
+                    <span
                       className={
-                        salaryNet < 0
-                          ? "font-medium tabular-nums text-warn"
-                          : "font-medium tabular-nums text-ink"
+                        salaryNet < 0 ? "tabular-nums text-warn" : "tabular-nums text-ink"
                       }
                     >
                       {inr(salaryNet)}
-                    </p>
-                    {salaryNet < 0 ? (
-                      <p className="text-[11px] text-warn">Over-advanced — nothing further to pay</p>
-                    ) : null}
+                    </span>
                   </div>
+                  {salaryNet < 0 ? (
+                    <p className="text-[11px] text-warn">Over-advanced / over-deducted — nothing further to pay</p>
+                  ) : null}
                 </div>
                 <Button
                   type="button"
@@ -449,19 +532,16 @@ export function PaySheet({
                   variant="outline"
                   onClick={() => {
                     if (!driver) return;
-                    setAmount(String(Math.max(0, salaryNet)));
                     setAttendance(driver.id, salaryForMonth, leaveN);
-                    setNote(
-                      `Salary ${monthLabel(salaryForMonth)} · net ${Math.max(0, salaryNet)} · paid ${date}`,
-                    );
+                    applySalaryNet();
                     toast.message(
                       salaryNet < 0
                         ? "Over-advanced — amount set to 0"
-                        : "Amount set to net (salary − advances)",
+                        : "Amount set to full settlement net",
                     );
                   }}
                 >
-                  Use net amount (salary − advances)
+                  Use net amount
                 </Button>
               </div>
             ) : null}
@@ -503,120 +583,100 @@ export function PaySheet({
             </div>
 
             {mode === "upi" ? (
-              <div className="rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
-                {driver?.upiVpa ? (
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div>
-                      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">On file</div>
-                      <div className="text-sm font-medium text-ink">{maskVpa(driver.upiVpa)}</div>
-                    </div>
-                    <Badge tone="ok">Saved</Badge>
-                  </div>
-                ) : (
-                  <div className="mb-3 rounded-md border border-warn/20 bg-warn-soft px-3 py-2 text-[13px] text-warn">
-                    No UPI saved for {driver?.name || "this driver"}. Add it here.
-                  </div>
-                )}
-                <UpiField id="pay-upi" value={upi} onChange={setUpi} payeeName={payee} onPayeeName={setPayee} />
-                <label className="mt-3 flex items-center gap-2 text-sm text-ink">
+              <div className="space-y-3 rounded-lg border border-line bg-canvas/40 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Smartphone className="size-4 text-accent" />
+                  UPI for {driver?.name || "driver"}
+                </div>
+                <UpiField
+                  value={upi}
+                  onChange={setUpi}
+                  payeeName={payee}
+                  onPayeeNameChange={setPayee}
+                />
+                <label className="flex items-center gap-2 text-[12px] text-muted">
                   <input
                     type="checkbox"
-                    className="size-4 accent-accent"
                     checked={saveUpi}
                     onChange={(e) => setSaveUpi(e.target.checked)}
+                    className="size-4 rounded border-line"
                   />
-                  Save this UPI ID on the driver
+                  Save UPI on this driver
                 </label>
+                {vpa ? (
+                  <p className="font-mono text-[12px] text-muted">{maskVpa(vpa)}</p>
+                ) : (
+                  <p className="flex items-center gap-1 text-[12px] text-warn">
+                    <ShieldAlert className="size-3.5" /> Add UPI before paying
+                  </p>
+                )}
               </div>
             ) : null}
 
             <div>
               <Label htmlFor="pay-note">Note</Label>
-              <Input id="pay-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
+              <Input id="pay-note" value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
 
-            <Button className="w-full" onClick={goConfirm}>
-              Continue to confirm
+            <Button type="button" className="w-full" onClick={goConfirm}>
+              Continue
             </Button>
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-lg bg-navy px-4 py-5 text-navy-fg">
-              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-navy-fg/60">
-                {KINDS.find((k) => k.id === kind)?.label} · {driver?.name}
+            <div className="rounded-lg border border-line bg-canvas/60 p-3 text-sm">
+              <div className="flex justify-between gap-2">
+                <span className="text-muted">Driver</span>
+                <span className="font-medium">{driver?.name}</span>
               </div>
-              <div className="mt-1 font-display text-4xl font-medium tabular-nums tracking-tight">
-                {(() => {
-                  const a = parseFloat(amount);
-                  return Number.isFinite(a) && a > 0 ? inr(a) : "Open amount";
-                })()}
+              <div className="mt-1 flex justify-between gap-2">
+                <span className="text-muted">Type</span>
+                <Badge tone="muted">{KINDS.find((k) => k.id === kind)?.label || kind}</Badge>
               </div>
+              <div className="mt-1 flex justify-between gap-2">
+                <span className="text-muted">Amount</span>
+                <span className="font-medium tabular-nums">{inr(parseFloat(amount) || 0)}</span>
+              </div>
+              {note ? (
+                <p className="mt-2 text-[12px] text-muted">{note}</p>
+              ) : null}
             </div>
 
-            {mode === "upi" ? (
-              <>
-                <div className="rounded-xl border border-accent/30 bg-accent-soft/40 px-3 py-4">
-                  <div className="mb-2 text-center text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
-                    Scan QR (amount open — enter in app)
-                  </div>
-                  <UpiQr
-                    vpa={vpa}
-                    payeeName={payee || driver?.name || "Driver"}
-                    size={240}
-                    caption="QR has no fixed amount. After scan, type the amount in the UPI app."
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button type="button" variant="outline" onClick={() => openApp("paytm")}>
+            {mode === "upi" && vpa ? (
+              <div className="flex flex-col items-center gap-3">
+                <UpiQr vpa={vpa} payeeName={payee || driver?.name || ""} amount={parseFloat(amount) || 0} />
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={() => openApp("paytm")}>
                     Paytm
                   </Button>
-                  <Button type="button" variant="outline" onClick={() => openApp("phonepe")}>
+                  <Button type="button" size="sm" variant="outline" onClick={() => openApp("phonepe")}>
                     PhonePe
                   </Button>
-                  <Button type="button" variant="outline" onClick={() => openApp("gpay")}>
-                    GPay
+                  <Button type="button" size="sm" variant="outline" onClick={() => openApp("generic")}>
+                    Other UPI
                   </Button>
-                  <Button type="button" variant="outline" onClick={() => void onShare()}>
-                    <Share2 className="size-4" /> Share
+                  <Button type="button" size="sm" variant="outline" onClick={() => void onShare()}>
+                    <Share2 className="size-3.5" /> Share
                   </Button>
                 </div>
-                <p className="text-[11px] text-muted">
-                  {os === "ios"
-                    ? "iPhone: if app buttons fail, copy UPI ID."
-                    : os === "android"
-                      ? "Android: opens the selected app when installed."
-                      : "On desktop, details are copied — paste in a UPI app on phone."}
-                </p>
-                <div className="flex items-start gap-2 rounded-md border border-warn/25 bg-warn-soft px-3 py-2.5 text-[13px] leading-snug text-warn">
-                  <ShieldAlert className="mt-0.5 size-4 shrink-0" />
-                  Payment is not marked paid until you confirm below.
-                </div>
-                <Button type="button" variant="outline" className="w-full" onClick={() => void copy(vpa, "UPI ID")}>
-                  <Smartphone className="size-4" /> Copy UPI ID
-                </Button>
-              </>
-            ) : (
-              <p className="text-sm text-muted">
-                {mode === "cash" ? "Cash payout" : "Bank transfer"} — confirm only after the money has left.
-              </p>
-            )}
+                <p className="text-center text-[11px] text-muted">OS hint: {os}</p>
+              </div>
+            ) : null}
 
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="danger" onClick={markFailed}>
-                Payment failed
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button type="button" onClick={markPaid}>
+                Mark paid
               </Button>
-              <Button onClick={markPaid}>Mark paid</Button>
+              <Button type="button" variant="outline" onClick={sharePaidWa}>
+                <MessageCircle className="size-4" /> WhatsApp
+              </Button>
+              <Button type="button" variant="outline" onClick={markFailed}>
+                Mark failed
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setStep("form")}>
+                Back
+              </Button>
             </div>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => {
-                markPaid();
-                sharePaidWa();
-              }}
-            >
-              <MessageCircle className="size-4" /> Mark paid + WhatsApp
-            </Button>
           </div>
         )}
       </DialogContent>
