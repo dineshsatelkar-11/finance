@@ -57,7 +57,6 @@ function PayoutsPage() {
 
   const rows = useMemo(() => {
     return payouts
-      .filter((p) => p.date.startsWith(month))
       .filter((p) => !driverFilter || p.driverId === driverFilter)
       .filter((p) => !statusFilter || p.status === statusFilter)
       .filter((p) => !kindFilter || p.kind === kindFilter)
@@ -67,10 +66,10 @@ function PayoutsPage() {
         if (d !== 0) return d;
         return (b.createdAt || "").localeCompare(a.createdAt || "");
       });
-  }, [payouts, month, driverFilter, statusFilter, kindFilter]);
+  }, [payouts, driverFilter, statusFilter, kindFilter]);
 
   const heldFailed = payouts.filter(
-    (p) => p.date.startsWith(month) && (p.status === "pending" || p.status === "failed"),
+    (p) => p.status === "pending" || p.status === "failed",
   );
 
   function openEdit(p: Payout) {
@@ -187,7 +186,7 @@ function PayoutsPage() {
       <div className="space-y-2">
         {rows.length === 0 ? (
           <Card>
-            <p className="text-sm text-muted">No payouts this month.</p>
+            <p className="text-sm text-muted">No payouts yet.</p>
           </Card>
         ) : (
           rows.map((p) => {
