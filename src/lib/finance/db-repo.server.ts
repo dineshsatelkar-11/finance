@@ -193,6 +193,7 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
     expenses: expenses.map(
       (r): Expense => ({
         id: str(r.id),
+        name: str(r.name),
         category: str(r.category),
         vendor: str(r.vendor),
         amount: num(r.amount),
@@ -273,31 +274,34 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
 
 export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> {
   const sql = await getSql();
-  // Full replace (single-tenant desk)
-  await sql.query(`delete from loan_payments`);
-  await sql.query(`delete from rent_waivers`);
-  await sql.query(`delete from attendances`);
-  await sql.query(`delete from rent_payments`);
-  await sql.query(`delete from receipts`);
-  await sql.query(`delete from expenses`);
-  await sql.query(`delete from payouts`);
-  await sql.query(`delete from customers`);
-  await sql.query(`delete from vendors`);
-  await sql.query(`delete from drivers`);
-  await sql.query(`delete from loans`);
-  await sql.query(`delete from fleets`);
-  await sql.query(`delete from banks`);
+  /**
+   * Masters (banks/drivers/…): UPSERT only — never DELETE ALL.
+   * Full delete was wiping UPI/mobile/opening when client snapshot was partial.
+   * Transactions: replace from snapshot.
+   */
 
   for (const b of snap.banks) {
     await sql.query(
-      `insert into banks (id, name, is_default, opening) values ($1, $2, $3, $4)`,
+      `insert into banks (id, name, is_default, opening) values ($1, $2, $3, $4)
+       on conflict (id) do update set
+         name = excluded.name,
+         is_default = excluded.is_default,
+         opening = excluded.opening`,
       [b.id, b.name, b.isDefault, b.opening],
     );
   }
   for (const f of snap.fleets) {
     await sql.query(
       `insert into fleets (id, name, reg_no, kind, monthly_rent, active, loan_id, note)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (id) do update set
+         name = excluded.name,
+         reg_no = excluded.reg_no,
+         kind = excluded.kind,
+         monthly_rent = excluded.monthly_rent,
+         active = excluded.active,
+         loan_id = excluded.loan_id,
+         note = excluded.note`,
       [f.id, f.name, f.regNo, f.kind, f.monthlyRent, f.active, f.loanId, f.note],
     );
   }
@@ -306,7 +310,24 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
       `insert into loans (
         id, name, bank, account_no, ifsc, principal, emi_amount, emi_day, total_emis,
         start_date, end_date, interest_rate, outstanding, pending_emis, status, fleet_id, note
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       on conflict (id) do update set
+         name = excluded.name,
+         bank = excluded.bank,
+         account_no = excluded.account_no,
+         ifsc = excluded.ifsc,
+         principal = excluded.principal,
+         emi_amount = excluded.emi_amount,
+         emi_day = excluded.emi_day,
+         total_emis = excluded.total_emis,
+         start_date = excluded.start_date,
+         end_date = excluded.end_date,
+         interest_rate = excluded.interest_rate,
+         outstanding = excluded.outstanding,
+         pending_emis = excluded.pending_emis,
+         status = excluded.status,
+         fleet_id = excluded.fleet_id,
+         note = excluded.note`,
       [
         l.id, l.name, l.bank, l.accountNo, l.ifsc, l.principal, l.emiAmount, l.emiDay, l.totalEmis,
         l.startDate, l.endDate, l.interestRate, l.outstanding, l.pendingEmis, l.status, l.fleetId, l.note,
@@ -318,7 +339,20 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
       `insert into drivers (
         id, name, mobile, kind, base_salary, daily_rate, opening_balance, active,
         upi_vpa, upi_payee_name, upi_updated_at, fleet_id, note
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       on conflict (id) do update set
+         name = excluded.name,
+         mobile = excluded.mobile,
+         kind = excluded.kind,
+         base_salary = excluded.base_salary,
+         daily_rate = excluded.daily_rate,
+         opening_balance = excluded.opening_balance,
+         active = excluded.active,
+         upi_vpa = excluded.upi_vpa,
+         upi_payee_name = excluded.upi_payee_name,
+         upi_updated_at = excluded.upi_updated_at,
+         fleet_id = excluded.fleet_id,
+         note = excluded.note`,
       [
         d.id, d.name, d.mobile, d.kind, d.baseSalary, d.dailyRate, d.openingBalance ?? 0, d.active,
         d.upiVpa, d.upiPayeeName, d.upiUpdatedAt, d.fleetId, d.note,
@@ -327,16 +361,38 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
   }
   for (const v of snap.vendors) {
     await sql.query(
-      `insert into vendors (id, name, upi_vpa, upi_payee_name) values ($1,$2,$3,$4)`,
+      `insert into vendors (id, name, upi_vpa, upi_payee_name) values ($1,$2,$3,$4)
+       on conflict (id) do update set
+         name = excluded.name,
+         upi_vpa = excluded.upi_vpa,
+         upi_payee_name = excluded.upi_payee_name`,
       [v.id, v.name, v.upiVpa, v.upiPayeeName],
     );
   }
   for (const c of snap.customers) {
     await sql.query(
-      `insert into customers (id, name, mobile, note) values ($1,$2,$3,$4)`,
+      `insert into customers (id, name, mobile, note) values ($1,$2,$3,$4)
+       on conflict (id) do update set
+         name = excluded.name,
+         mobile = excluded.mobile,
+         note = excluded.note`,
       [c.id, c.name, c.mobile, c.note],
     );
   }
+
+  await sql.query(`delete from loan_payments`);
+  await sql.query(`delete from rent_waivers`);
+  await sql.query(`delete from attendances`);
+  await sql.query(`delete from rent_payments`);
+  await sql.query(`delete from receipts`);
+  await sql.query(`delete from expenses`);
+  await sql.query(`delete from payouts`);
+  try {
+    await sql.query(`delete from bank_transfers`);
+  } catch {
+    // older DBs
+  }
+
   for (const p of snap.payouts) {
     await sql.query(
       `insert into payouts (
@@ -388,6 +444,24 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [lp.id, lp.loanId, lp.kind, lp.amount, lp.date, lp.mode, lp.status, lp.bankAccountId, lp.note, lp.createdAt],
     );
+  }
+  for (const x of snap.bankTransfers ?? []) {
+    try {
+      await sql.query(
+        `insert into bank_transfers (
+          id, from_bank_id, to_bank_id, amount, date, note, created_at
+        ) values ($1,$2,$3,$4,$5,$6,$7)
+         on conflict (id) do update set
+           from_bank_id = excluded.from_bank_id,
+           to_bank_id = excluded.to_bank_id,
+           amount = excluded.amount,
+           date = excluded.date,
+           note = excluded.note`,
+        [x.id, x.fromBankId, x.toBankId, x.amount, x.date, x.note, x.createdAt],
+      );
+    } catch {
+      // bank_transfers schema may differ
+    }
   }
 }
 
