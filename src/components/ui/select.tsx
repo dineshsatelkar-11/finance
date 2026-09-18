@@ -31,7 +31,7 @@ export function SelectContent({ className, children, ...props }: React.Component
       <SelectPrimitive.Content
         position="popper"
         className={cn(
-          "z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-line bg-raised shadow-[var(--shadow-lift)]",
+          "z-[100] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-line bg-raised shadow-[var(--shadow-lift)]",
           className,
         )}
         {...props}
