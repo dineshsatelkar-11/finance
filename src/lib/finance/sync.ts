@@ -231,7 +231,11 @@ function mergeMastersById<T extends { id: string }>(server: T[], local: T[]): T[
   return [...map.values()];
 }
 
-/** Drivers: keep local salary / opening / UPI when server would wipe them. */
+/**
+ * Drivers: Neon is source of truth for existing ids.
+ * Only fill EMPTY Neon fields from local — never overwrite real UPI/mobile/opening with zeros.
+ * Local-only drivers (not on Neon yet) are kept.
+ */
 function mergeDrivers(server: Driver[], local: Driver[]): Driver[] {
   const map = new Map<string, Driver>();
   for (const row of server) map.set(row.id, row);
@@ -242,37 +246,26 @@ function mergeDrivers(server: Driver[], local: Driver[]): Driver[] {
       continue;
     }
     const merged: Driver = { ...prev };
-    if ((row.baseSalary ?? 0) !== (prev.baseSalary ?? 0)) {
-      merged.baseSalary = row.baseSalary;
-    }
-    if ((row.openingBalance ?? 0) !== (prev.openingBalance ?? 0)) {
+    if (!(prev.baseSalary ?? 0) && (row.baseSalary ?? 0)) merged.baseSalary = row.baseSalary;
+    if (!(prev.openingBalance ?? 0) && (row.openingBalance ?? 0)) {
       merged.openingBalance = row.openingBalance;
     }
-    if (row.upiVpa && !prev.upiVpa) merged.upiVpa = row.upiVpa;
-    if (row.upiPayeeName && !prev.upiPayeeName) merged.upiPayeeName = row.upiPayeeName;
-    if (row.mobile && !prev.mobile) merged.mobile = row.mobile;
-    if (row.dailyRate && !prev.dailyRate) merged.dailyRate = row.dailyRate;
-    if (row.note && !prev.note) merged.note = row.note;
+    if (!prev.upiVpa && row.upiVpa) merged.upiVpa = row.upiVpa;
+    if (!prev.upiPayeeName && row.upiPayeeName) merged.upiPayeeName = row.upiPayeeName;
+    if (!prev.mobile && row.mobile) merged.mobile = row.mobile;
+    if (!(prev.dailyRate ?? 0) && (row.dailyRate ?? 0)) merged.dailyRate = row.dailyRate;
+    if (!prev.note && row.note) merged.note = row.note;
     map.set(row.id, merged);
   }
   return [...map.values()];
 }
 
-/** Banks: prefer local opening when user corrected it. */
+/** Banks: Neon wins for existing ids; only keep local-only banks. */
 function mergeBanks(server: BankAccount[], local: BankAccount[]): BankAccount[] {
   const map = new Map<string, BankAccount>();
   for (const row of server) map.set(row.id, row);
   for (const row of local) {
-    const prev = map.get(row.id);
-    if (!prev) {
-      map.set(row.id, row);
-      continue;
-    }
-    const merged: BankAccount = { ...prev };
-    if (row.opening !== prev.opening) merged.opening = row.opening;
-    if (row.name && row.name !== prev.name) merged.name = row.name;
-    if (row.isDefault !== prev.isDefault) merged.isDefault = row.isDefault;
-    map.set(row.id, merged);
+    if (!map.has(row.id)) map.set(row.id, row);
   }
   return [...map.values()];
 }
@@ -340,8 +333,14 @@ export async function hydrateFinanceFromDb(): Promise<{
     applySnapshot(merged);
     ensureWsbLoan015AndCc();
     hydrated = true;
-    // Always push merged snapshot so local opening/salary/new rows stick on Neon
-    void flushFinanceSave();
+    // Only push if local had rows Neon does not (never rewrite Neon from empty local)
+    const recovered =
+      countTxn(merged) > countTxn(res.data) ||
+      merged.drivers.length > res.data.drivers.length ||
+      merged.banks.length > res.data.banks.length;
+    if (recovered) {
+      void flushFinanceSave();
+    }
     return { ok: true, source: "neon" };
   } catch (e) {
     hydrated = true;
