@@ -43,7 +43,6 @@ export const saveFinanceToDb = createServerFn({ method: "POST" }).handler(
   async (ctx: unknown): Promise<{ ok: boolean; error?: string }> => {
     try {
       const raw = ctx as Record<string, unknown> | FinanceSnapshot | null;
-      // TanStack Start may pass the object directly or nested under `.data`
       let data: FinanceSnapshot | null = null;
       if (raw && typeof raw === "object") {
         if (Array.isArray((raw as FinanceSnapshot).banks)) {
