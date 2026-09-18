@@ -193,7 +193,6 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
     expenses: expenses.map(
       (r): Expense => ({
         id: str(r.id),
-        name: str(r.name),
         category: str(r.category),
         vendor: str(r.vendor),
         amount: num(r.amount),
@@ -497,7 +496,7 @@ export async function clearFinanceTables(): Promise<void> {
     try {
       await sql.query(`delete from ${t}`);
     } catch {
-      // table may not exist yet (e.g. bank_transfers before migration)
+      // table may not exist yet
     }
   }
 }
