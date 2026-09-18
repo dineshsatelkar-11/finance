@@ -48,7 +48,7 @@ export function DriverForm({
     setNote(driver?.note || "");
   }, [open, driver]);
 
-  function save() {
+  async function save() {
     const n = name.trim();
     if (!n) {
       toast.error("Name is required.");
@@ -79,8 +79,12 @@ export function DriverForm({
       note: note.trim(),
     };
     upsert(row);
-    void flushFinanceSave();
-    toast.success(vpa ? `${n} saved with UPI` : `${n} saved`);
+    const res = await flushFinanceSave();
+    if (!res.ok) {
+      toast.error(res.error || "Saved on screen but Neon DB write failed — try again");
+      return;
+    }
+    toast.success(vpa ? `${n} saved to DB with UPI` : `${n} saved to DB`);
     onOpenChange(false);
   }
 
@@ -173,7 +177,7 @@ export function DriverForm({
             <Label htmlFor="drv-note">Note</Label>
             <Input id="drv-note" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
-          <Button className="w-full" onClick={save}>
+          <Button className="w-full" onClick={() => void save()}>
             Save driver
           </Button>
         </div>
