@@ -6,6 +6,7 @@ import type {
   Driver,
   Expense,
   FinanceSnapshot,
+  Fleet,
   Loan,
   Payout,
 } from "./types";
@@ -26,8 +27,8 @@ const WSB_LOAN_015: Loan = {
   outstanding: 398000,
   pendingEmis: 59,
   status: "active",
-  fleetId: null,
-  note: "SATELKARS LOGISTIC · Customer ID 554827 · Disburse 09/09/2026 · 398000 · EMI starts 09/10/2026 · 9.50%",
+  fleetId: "fleet_wego_mh12zp2301",
+  note: "SATELKARS LOGISTIC · Customer ID 554827 · Disburse 09/09/2026 · 398000 · EMI starts 09/10/2026 · 9.50% · Bajaj Wego MH-12-ZP-2301",
 };
 
 const WSB_CC_BANK: BankAccount = {
@@ -42,6 +43,17 @@ const WSB_CURRENT_BANK: BankAccount = {
   name: "Warana Current · …0498",
   isDefault: false,
   opening: 11390,
+};
+
+const FLEET_WEGO: Fleet = {
+  id: "fleet_wego_mh12zp2301",
+  name: "Bajaj Wego",
+  regNo: "MH-12-ZP-2301",
+  kind: "tempo",
+  monthlyRent: 0,
+  active: true,
+  loanId: "loan_wsb_000015",
+  note: "New vehicle · loan …000015 · statement MH12ZP2301",
 };
 
 const STMT_DRIVERS: { id: string; name: string }[] = [
@@ -149,9 +161,34 @@ function ensureWsbLoan015AndCc(): boolean {
   const s0 = useFinance.getState();
   let changed = false;
 
+  if (!s0.fleets.some((f) => f.id === FLEET_WEGO.id || /MH-?12-?ZP-?2301/i.test(f.regNo || ""))) {
+    s0.upsertFleet(FLEET_WEGO);
+    changed = true;
+  } else {
+    const existing = useFinance.getState().fleets.find(
+      (f) => f.id === FLEET_WEGO.id || /MH-?12-?ZP-?2301/i.test(f.regNo || ""),
+    );
+    if (existing && (existing.loanId !== FLEET_WEGO.loanId || existing.regNo !== FLEET_WEGO.regNo)) {
+      useFinance.getState().upsertFleet({
+        ...existing,
+        name: existing.name || FLEET_WEGO.name,
+        regNo: FLEET_WEGO.regNo,
+        kind: existing.kind || "tempo",
+        loanId: FLEET_WEGO.loanId,
+        note: existing.note || FLEET_WEGO.note,
+      });
+      changed = true;
+    }
+  }
   if (!s0.loans.some((l) => l.id === WSB_LOAN_015.id)) {
     s0.upsertLoan(WSB_LOAN_015);
     changed = true;
+  } else {
+    const loan015 = useFinance.getState().loans.find((l) => l.id === WSB_LOAN_015.id);
+    if (loan015 && loan015.fleetId !== FLEET_WEGO.id) {
+      useFinance.getState().upsertLoan({ ...loan015, fleetId: FLEET_WEGO.id });
+      changed = true;
+    }
   }
   if (!s0.banks.some((b) => b.id === WSB_CC_BANK.id)) {
     s0.upsertBank(WSB_CC_BANK);
@@ -586,6 +623,14 @@ function ensureWsbLoan015AndCc(): boolean {
     ex("exp_stmt_20260911_tempo8646_9050", "Other", "Tempo 8646", 9050, "2026-09-11", "Tempo expense 8646 · Anubhaw Raj · statement"),
     ex("exp_stmt_20260912_tempo_booking_800", "Other", "Tempo booking", 800, "2026-09-12", "Tempo expense booking · statement"),
     ex("exp_stmt_20260911_test_1", "Other", "Testing", 1, "2026-09-11", "₹1 testing · statement"),
+    ex("exp_stmt_20260917_tempo_pickup_200", "Other", "Tempo pickup & drop", 200, "2026-09-17", "MH12ZP2301 tempo pickup drop Vivek Nashta · statement"),
+    ex("exp_stmt_20260917_tempo_pickup_100", "Other", "Tempo pickup & drop", 100, "2026-09-17", "MH12ZP2301 tempo pickup drop Vivek Master · statement"),
+    ex("exp_stmt_20260917_tempo_pickup_300", "Other", "Tempo pickup & drop", 300, "2026-09-17", "MH12ZP2301 tempo pickup drop Vivek Master · statement"),
+    ex("exp_stmt_20260918_tempo_pickup_300", "Other", "Tempo pickup & drop", 300, "2026-09-18", "MH12ZP2301 tempo pickup drop Vivek Master · statement"),
+    ex("exp_stmt_20260918_prakash_1", "Other", "Prakash", 1, "2026-09-18", "Prakash tempo body · statement"),
+    ex("exp_stmt_20260918_prakash_varma_20000", "Other", "Prakash Varma", 20000, "2026-09-18", "Prakash Varma tempo body · statement"),
+    ex("exp_stmt_20260918_prakash_varma_10499", "Other", "Prakash Varma", 10499, "2026-09-18", "Prakash Varma tempo body · statement"),
+    ex("exp_stmt_20260918_mane_number_plate_500", "Other", "Mane Rajkiran", 500, "2026-09-18", "Tempo number plate · MH12ZP2301 · statement"),
   ];
 
   const WRONG_ANAND_EXP = "exp_stmt_20260911_anand_recharge_1102";
@@ -610,6 +655,33 @@ function ensureWsbLoan015AndCc(): boolean {
   if (missingEx.length) {
     useFinance.setState((state) => ({
       expenses: [...(missingEx as Expense[]), ...state.expenses],
+    }));
+    changed = true;
+  }
+
+  const wegoFleetId =
+    useFinance.getState().fleets.find(
+      (f) => f.id === FLEET_WEGO.id || /MH-?12-?ZP-?2301/i.test(f.regNo || ""),
+    )?.id || FLEET_WEGO.id;
+  const wegoExpIds = new Set([
+    "exp_stmt_20260917_tempo_pickup_200",
+    "exp_stmt_20260917_tempo_pickup_100",
+    "exp_stmt_20260917_tempo_pickup_300",
+    "exp_stmt_20260918_tempo_pickup_300",
+    "exp_stmt_20260918_prakash_1",
+    "exp_stmt_20260918_prakash_varma_20000",
+    "exp_stmt_20260918_prakash_varma_10499",
+    "exp_stmt_20260918_mane_number_plate_500",
+    "exp_stmt_20260910_vivek_tempo_drop_500",
+  ]);
+  const needTag = useFinance
+    .getState()
+    .expenses.filter((e) => wegoExpIds.has(e.id) && e.fleetId !== wegoFleetId);
+  if (needTag.length) {
+    useFinance.setState((state) => ({
+      expenses: state.expenses.map((e) =>
+        wegoExpIds.has(e.id) ? { ...e, fleetId: wegoFleetId } : e,
+      ),
     }));
     changed = true;
   }
