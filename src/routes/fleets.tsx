@@ -30,73 +30,50 @@ function FleetsPage() {
   const loans = useFinance((s) => s.loans);
   const drivers = useFinance((s) => s.drivers);
   const expenses = useFinance((s) => s.expenses);
-  const month = useFinance((s) => s.month);
   const upsertFleet = useFinance((s) => s.upsertFleet);
-  const assignDriverFleet = useFinance((s) => s.assignDriverFleet);
+  const removeFleet = useFinance((s) => s.removeFleet);
 
-  const [open, setOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [regNo, setRegNo] = useState("");
-  const [kind, setKind] = useState<FleetKind>("mini");
-  const [chargesRent, setChargesRent] = useState(true);
+  const [kind, setKind] = useState<FleetKind>("tempo");
+  const [rentOn, setRentOn] = useState(false);
   const [rent, setRent] = useState("0");
-  const [loanId, setLoanId] = useState<string>("none");
+  const [loanId, setLoanId] = useState("none");
   const [note, setNote] = useState("");
-  const [active, setActive] = useState(true);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [filterMonth, setFilterMonth] = useState(month);
+  const [openId, setOpenId] = useState<string | null>(null);
 
-  const monthOptions = useMemo(() => {
-    const opts: string[] = [];
-    const now = new Date();
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      opts.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-    }
-    return opts;
-  }, []);
-
-  const monthLabel = (m: string) => {
-    const [y, mo] = m.split("-").map(Number);
-    return new Date(y, mo - 1, 1).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
-  };
-
-  const allFleetSpendMonth = useMemo(() => {
+  // Month filter is dashboard-only — fleet list shows full history
+  const allFleetSpend = useMemo(() => {
     return expenses
-      .filter((e) => e.status === "paid" && e.fleetId && e.date.startsWith(filterMonth))
+      .filter((e) => e.status === "paid" && e.fleetId)
       .reduce((s, e) => s + e.amount, 0);
-  }, [expenses, filterMonth]);
+  }, [expenses]);
 
   function resetForm() {
-    setEditingId(null);
+    setEditId(null);
     setName("");
     setRegNo("");
-    setKind("mini");
-    setChargesRent(true);
+    setKind("tempo");
+    setRentOn(false);
     setRent("0");
     setLoanId("none");
     setNote("");
-    setActive(true);
-  }
-
-  function startAdd() {
-    resetForm();
-    setOpen(true);
+    setShowForm(false);
   }
 
   function startEdit(f: Fleet) {
-    setEditingId(f.id);
+    setEditId(f.id);
     setName(f.name);
     setRegNo(f.regNo || "");
     setKind(f.kind);
-    const rentOn = fleetsChargesRent(f);
-    setChargesRent(rentOn);
-    setRent(rentOn && f.monthlyRent ? String(f.monthlyRent) : "0");
+    const on = fleetsChargesRent(f);
+    setRentOn(on);
+    setRent(on && f.monthlyRent ? String(f.monthlyRent) : "0");
     setLoanId(f.loanId || "none");
     setNote(f.note || "");
-    setActive(f.active);
-    setOpen(true);
+    setShowForm(true);
   }
 
   function save() {
@@ -104,20 +81,19 @@ function FleetsPage() {
       toast.error("Name required");
       return;
     }
-    const monthlyRent = chargesRent ? Number(rent) || 0 : 0;
+    const monthlyRent = rentOn ? Number(rent) || 0 : 0;
     upsertFleet({
-      id: editingId || uid("fleet"),
+      id: editId || uid("flt"),
       name: name.trim(),
-      regNo: regNo.trim() || null,
+      regNo: regNo.trim(),
       kind,
-      chargesRent,
       monthlyRent,
+      chargesRent: rentOn && monthlyRent > 0,
+      active: true,
       loanId: loanId === "none" ? null : loanId,
-      note: note.trim() || null,
-      active,
+      note: note.trim() || undefined,
     });
-    toast.success(editingId ? "Fleet updated" : "Fleet added");
-    setOpen(false);
+    toast.success(editId ? "Fleet updated" : "Fleet added");
     resetForm();
   }
 
@@ -125,25 +101,31 @@ function FleetsPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="font-display text-xl font-semibold">Fleets</h1>
-          <p className="text-[13px] text-muted">Vehicles, rent, drivers & maintenance spend</p>
+          <h1 className="font-display text-xl font-medium tracking-tight">Fleets</h1>
+          <p className="text-[13px] text-muted">Vehicles, rent, and tagged maintenance spend</p>
         </div>
-        <Button onClick={startAdd}>
-          <Plus /> Add fleet
+        <Button
+          size="sm"
+          onClick={() => {
+            resetForm();
+            setShowForm(true);
+          }}
+        >
+          <Plus className="size-4" /> Add fleet
         </Button>
       </div>
 
-      {open ? (
-        <Card className="p-4 space-y-3">
-          <CardTitle>{editingId ? "Edit fleet" : "New fleet"}</CardTitle>
+      {showForm ? (
+        <Card className="space-y-3 p-4">
+          <CardTitle>{editId ? "Edit fleet" : "New fleet"}</CardTitle>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label>Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mini 8026" />
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Bajaj Wego" />
             </div>
             <div>
               <Label>Reg no</Label>
-              <Input value={regNo} onChange={(e) => setRegNo(e.target.value)} placeholder="MH12…" />
+              <Input value={regNo} onChange={(e) => setRegNo(e.target.value)} placeholder="MH-12-ZP-2301" />
             </div>
             <div>
               <Label>Kind</Label>
@@ -174,40 +156,30 @@ function FleetsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end gap-3">
-              <label className="flex items-center gap-2 text-[13px]">
+            <div className="sm:col-span-2">
+              <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
-                  checked={chargesRent}
-                  onChange={(e) => setChargesRent(e.target.checked)}
+                  checked={rentOn}
+                  onChange={(e) => setRentOn(e.target.checked)}
                 />
-                Charges rent to driver
+                Charges monthly rent (driver pays company)
               </label>
+              {rentOn ? (
+                <div className="mt-2">
+                  <Label>Monthly rent ₹</Label>
+                  <Input value={rent} onChange={(e) => setRent(e.target.value)} inputMode="decimal" />
+                </div>
+              ) : null}
             </div>
-            {chargesRent ? (
-              <div>
-                <Label>Monthly rent (₹)</Label>
-                <Input value={rent} onChange={(e) => setRent(e.target.value)} inputMode="decimal" />
-              </div>
-            ) : null}
             <div className="sm:col-span-2">
               <Label>Note</Label>
               <Input value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
-            <label className="flex items-center gap-2 text-[13px]">
-              <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-              Active
-            </label>
           </div>
           <div className="flex gap-2">
-            <Button onClick={save}>{editingId ? "Save changes" : "Save fleet"}</Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setOpen(false);
-                resetForm();
-              }}
-            >
+            <Button onClick={save}>{editId ? "Save" : "Add"}</Button>
+            <Button variant="outline" onClick={resetForm}>
               Cancel
             </Button>
           </div>
@@ -218,177 +190,138 @@ function FleetsPage() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <div className="text-[11px] uppercase tracking-wide text-muted">Fleet maintenance (tagged)</div>
-            <div className="font-display text-2xl font-medium tabular-nums">{inr(allFleetSpendMonth)}</div>
+            <div className="font-display text-2xl font-medium tabular-nums">{inr(allFleetSpend)}</div>
             <p className="mt-1 text-[12px] text-muted">
-              All vehicles · {monthLabel(filterMonth)} · only expenses with a fleet selected
+              All vehicles · all time · only expenses with a fleet selected
             </p>
-          </div>
-          <div className="w-40">
-            <Label className="text-[11px]">Month</Label>
-            <Select value={filterMonth} onValueChange={setFilterMonth}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {monthOptions.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {monthLabel(m)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </div>
       </Card>
 
-      <div className="grid gap-3">
-        {fleets.map((f) => {
-          const loan = loans.find((l) => l.id === f.loanId);
-          const onVehicle = drivers.filter((d) => d.fleetId === f.id && d.active);
-          const fleetExps = expenses
-            .filter((e) => e.fleetId === f.id && e.status === "paid" && e.date.startsWith(filterMonth))
-            .slice()
-            .sort((a, b) => b.date.localeCompare(a.date));
-          const monthSpend = fleetExps.reduce((s, e) => s + e.amount, 0);
-          const rentOn = fleetsChargesRent(f);
-          const isOpen = expandedId === f.id;
-          return (
-            <Card key={f.id} className="p-4">
-              <button
-                type="button"
-                className="flex w-full flex-wrap items-start justify-between gap-3 text-left"
-                onClick={() => setExpandedId(isOpen ? null : f.id)}
-              >
-                <div className="flex items-start gap-2">
+      <div className="space-y-3">
+        {fleets.length === 0 ? (
+          <Card className="p-6 text-center text-sm text-muted">No fleets yet. Add a vehicle to tag expenses.</Card>
+        ) : (
+          fleets.map((f) => {
+            const isOpen = openId === f.id;
+            const onVehicle = drivers.filter((d) => d.fleetId === f.id && d.active);
+            const fleetExps = expenses
+              .filter((e) => e.fleetId === f.id && e.status === "paid")
+              .slice()
+              .sort((a, b) => (a.date < b.date ? 1 : -1));
+            const totalSpend = fleetExps.reduce((s, e) => s + e.amount, 0);
+            const linkedLoan = loans.find((l) => l.id === f.loanId);
+            const rentOn = fleetsChargesRent(f);
+
+            return (
+              <Card key={f.id} className="overflow-hidden p-0">
+                <button
+                  type="button"
+                  className="flex w-full items-start gap-3 p-4 text-left"
+                  onClick={() => setOpenId(isOpen ? null : f.id)}
+                >
                   <span className="mt-1 text-muted">
                     {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
                   </span>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="font-medium">{f.name}</h2>
-                      <Badge tone="muted">{f.kind}</Badge>
-                      {rentOn ? (
-                        <Badge tone="accent">Rent</Badge>
-                      ) : (
-                        <Badge tone="muted">Route only</Badge>
-                      )}
-                      {f.active ? <Badge tone="ok">Active</Badge> : <Badge tone="danger">Off</Badge>}
+                      <span className="font-display text-base font-medium">{f.name}</span>
+                      <Badge variant="outline">{f.kind}</Badge>
+                      {f.regNo ? <Badge variant="secondary">{f.regNo}</Badge> : null}
                     </div>
-                    <p className="mt-1 text-[13px] text-muted">
-                      {f.regNo || "No reg no"}
+                    <div className="mt-1 text-[12px] text-muted">
+                      {onVehicle.length} driver(s)
+                      {linkedLoan ? ` · Loan ${linkedLoan.name}` : ""}
                       {rentOn && f.monthlyRent > 0
                         ? ` · Rent ${inr(f.monthlyRent)}/mo`
-                        : rentOn
-                          ? " · Rent not set"
-                          : " · No rent (route)"}
-                    </p>
-                    {loan ? (
-                      <p className="mt-1 text-[12px] text-muted">
-                        Loan: {loan.name} · Outstanding {inr(loan.outstanding)}
-                      </p>
-                    ) : null}
-                    {f.note ? <p className="mt-1 text-[12px] text-subtle">{f.note}</p> : null}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[11px] uppercase tracking-wide text-muted">
-                    Spend · {monthLabel(filterMonth)}
-                  </div>
-                  <div className="font-display text-xl font-medium tabular-nums">{inr(monthSpend)}</div>
-                  <div className="text-[12px] text-muted">{fleetExps.length} expense(s)</div>
-                </div>
-              </button>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    startEdit(f);
-                  }}
-                >
-                  <Pencil className="size-3.5" /> Edit
-                </Button>
-                <Link
-                  to="/expenses"
-                  className="inline-flex h-8 items-center rounded-md border border-line px-3 text-[13px] text-accent"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Tag expense →
-                </Link>
-              </div>
-
-              {isOpen ? (
-                <div className="mt-4 border-t border-line pt-3">
-                  <div className="mb-2 text-[12px] font-medium text-muted">
-                    Expenses · {monthLabel(filterMonth)}
-                  </div>
-                  {fleetExps.length === 0 ? (
-                    <p className="text-[13px] text-subtle">
-                      No expenses tagged to this vehicle for this month. In Spend, edit an expense and
-                      choose this fleet.
-                    </p>
-                  ) : (
-                    <ul className="divide-y divide-line rounded-lg border border-line">
-                      {fleetExps.map((e) => (
-                        <li key={e.id} className="flex items-start justify-between gap-2 px-3 py-2.5">
-                          <div className="min-w-0">
-                            <div className="font-medium">{e.vendor || e.category}</div>
-                            <div className="text-[12px] text-muted">
-                              {e.date} · {e.category}
-                              {e.note ? ` · ${e.note}` : ""}
-                            </div>
-                          </div>
-                          <div className="shrink-0 font-medium tabular-nums text-danger">{inr(e.amount)}</div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  <div className="mt-4">
-                    <div className="mb-2 text-[12px] font-medium text-muted">Assigned drivers</div>
-                    {onVehicle.length === 0 ? (
-                      <p className="text-[13px] text-subtle">None yet — pick a driver below.</p>
-                    ) : (
-                      <ul className="flex flex-wrap gap-2">
-                        {onVehicle.map((d) => (
-                          <Badge key={d.id} tone="accent">
-                            {d.name}
-                          </Badge>
-                        ))}
-                      </ul>
-                    )}
-                    <div className="mt-3 max-w-xs">
-                      <Label className="text-[12px]">Assign driver</Label>
-                      <Select
-                        onValueChange={(driverId) => {
-                          if (driverId === "none") return;
-                          assignDriverFleet(driverId, f.id);
-                          toast.success("Driver assigned to fleet");
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose driver…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {drivers
-                            .filter((d) => d.active)
-                            .map((d) => (
-                              <SelectItem key={d.id} value={d.id}>
-                                {d.name}
-                                {d.fleetId === f.id ? " (current)" : d.fleetId ? " (other fleet)" : ""}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
+                        : ""}
                     </div>
                   </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-[11px] uppercase tracking-wide text-muted">Spend · all time</div>
+                    <div className="font-display text-xl font-medium tabular-nums">{inr(totalSpend)}</div>
+                    <div className="text-[12px] text-muted">{fleetExps.length} expense(s)</div>
+                  </div>
+                </button>
+
+                <div className="border-t border-line px-4 pb-4">
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEdit(f);
+                      }}
+                    >
+                      <Pencil className="size-3.5" /> Edit
+                    </Button>
+                    <Link
+                      to="/expenses"
+                      className="inline-flex h-8 items-center rounded-md border border-line px-3 text-[13px] text-accent"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Tag expense →
+                    </Link>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-danger"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Remove fleet ${f.name}?`)) {
+                          removeFleet(f.id);
+                          toast.success("Fleet removed");
+                        }
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+
+                  {isOpen ? (
+                    <div className="mt-4 border-t border-line pt-3">
+                      <div className="mb-2 text-[12px] font-medium text-muted">Expenses · all time</div>
+                      {fleetExps.length === 0 ? (
+                        <p className="text-[13px] text-subtle">
+                          No expenses tagged to this vehicle. In Spend, edit an expense and choose this fleet.
+                        </p>
+                      ) : (
+                        <ul className="divide-y divide-line rounded-lg border border-line">
+                          {fleetExps.map((e) => (
+                            <li key={e.id} className="flex items-start justify-between gap-2 px-3 py-2.5">
+                              <div className="min-w-0">
+                                <div className="font-medium">{e.vendor || e.category}</div>
+                                <div className="text-[12px] text-muted">
+                                  {e.date} · {e.category}
+                                  {e.note ? ` · ${e.note}` : ""}
+                                </div>
+                              </div>
+                              <div className="shrink-0 font-medium tabular-nums text-danger">{inr(e.amount)}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      <div className="mt-4">
+                        <div className="mb-2 text-[12px] font-medium text-muted">Assigned drivers</div>
+                        {onVehicle.length === 0 ? (
+                          <p className="text-[13px] text-subtle">None assigned</p>
+                        ) : (
+                          <ul className="text-[13px]">
+                            {onVehicle.map((d) => (
+                              <li key={d.id}>{d.name}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-            </Card>
-          );
-        })}
+              </Card>
+            );
+          })
+        )}
       </div>
     </div>
   );
