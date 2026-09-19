@@ -18,6 +18,7 @@ import type {
   RentPayment,
   RentWaiver,
   Vendor,
+  BankTransfer,
 } from "./types";
 
 function str(v: unknown) {
@@ -99,6 +100,16 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
        from loan_payments order by date desc, created_at desc`,
     ),
   ]);
+
+  let bankTransferRows: Record<string, unknown>[] = [];
+  try {
+    bankTransferRows = await sql.query(
+      `select id, from_bank_id, to_bank_id, amount, date, note, created_at
+       from bank_transfers order by date desc, created_at desc`,
+    );
+  } catch {
+    bankTransferRows = [];
+  }
 
   return {
     banks: banks.map(
@@ -268,22 +279,32 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
         createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
       }),
     ),
+    bankTransfers: bankTransferRows.map(
+      (r): BankTransfer => ({
+        id: str(r.id),
+        fromBankId: str(r.from_bank_id),
+        toBankId: str(r.to_bank_id),
+        amount: num(r.amount),
+        date: dateStr(r.date),
+        note: str(r.note),
+        createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
+      }),
+    ),
   };
 }
 
 export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> {
   const sql = await getSql();
-  // Refuse to wipe Neon with an empty/partial snapshot
   const hasData =
     (snap.banks?.length ?? 0) +
       (snap.drivers?.length ?? 0) +
       (snap.expenses?.length ?? 0) +
-      (snap.payouts?.length ?? 0) >
+      (snap.payouts?.length ?? 0) +
+      (snap.bankTransfers?.length ?? 0) >
     0;
   if (!hasData) {
     return;
   }
-  // Full replace (single-tenant desk)
   await sql.query(`delete from loan_payments`);
   await sql.query(`delete from rent_waivers`);
   await sql.query(`delete from attendances`);
@@ -291,6 +312,11 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
   await sql.query(`delete from receipts`);
   await sql.query(`delete from expenses`);
   await sql.query(`delete from payouts`);
+  try {
+    await sql.query(`delete from bank_transfers`);
+  } catch {
+    /* table may not exist */
+  }
   await sql.query(`delete from customers`);
   await sql.query(`delete from vendors`);
   await sql.query(`delete from drivers`);
@@ -398,6 +424,17 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [lp.id, lp.loanId, lp.kind, lp.amount, lp.date, lp.mode, lp.status, lp.bankAccountId, lp.note, lp.createdAt],
     );
+  }
+  for (const x of snap.bankTransfers ?? []) {
+    try {
+      await sql.query(
+        `insert into bank_transfers (id, from_bank_id, to_bank_id, amount, date, note, created_at)
+         values ($1,$2,$3,$4,$5,$6,$7)`,
+        [x.id, x.fromBankId, x.toBankId, x.amount, x.date, x.note, x.createdAt],
+      );
+    } catch {
+      /* table may not exist */
+    }
   }
 }
 
