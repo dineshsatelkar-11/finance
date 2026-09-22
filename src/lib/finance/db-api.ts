@@ -40,11 +40,18 @@ export const loadFinanceFromDb = createServerFn({ method: "GET" }).handler(
 
 /** Body is the FinanceSnapshot JSON. */
 export const saveFinanceToDb = createServerFn({ method: "POST" }).handler(
-  async (ctx: {
-    data?: FinanceSnapshot;
-  }): Promise<{ ok: boolean; error?: string }> => {
+  async (ctx: unknown): Promise<{ ok: boolean; error?: string }> => {
     try {
-      const data = ctx.data;
+      // TanStack may pass { data: snap } or the snap itself
+      const raw = ctx as { data?: FinanceSnapshot } | FinanceSnapshot | null;
+      let data: FinanceSnapshot | undefined;
+      if (raw && typeof raw === "object") {
+        if ("data" in raw && raw.data && typeof raw.data === "object") {
+          data = raw.data as FinanceSnapshot;
+        } else if ("banks" in raw && Array.isArray((raw as FinanceSnapshot).banks)) {
+          data = raw as FinanceSnapshot;
+        }
+      }
       if (!data || !Array.isArray(data.banks)) {
         return { ok: false, error: "Invalid finance snapshot payload" };
       }
