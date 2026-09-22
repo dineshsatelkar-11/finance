@@ -48,20 +48,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [dbNote, setDbNote] = useState<string | null>(null);
 
   useEffect(() => {
-    void useFinance.persist.rehydrate();
-    const unsub = startFinanceDbSync();
-    void hydrateFinanceFromDb().then((r) => {
+    let unsub = () => {};
+    void (async () => {
+      // Wait for localStorage before Neon so UI-added advances are not wiped
+      try {
+        await useFinance.persist.rehydrate();
+      } catch {
+        // ignore
+      }
+      unsub = startFinanceDbSync();
+      const r = await hydrateFinanceFromDb();
       if (!r.ok) {
         setDbNote(r.error ? `DB offline: ${r.error}` : "DB offline — using local data");
         return;
       }
       if (r.source === "seed-pushed") {
-        setDbNote("Neon connected — demo data saved to database");
+        setDbNote("Neon connected — statement data restored");
       } else if (r.source === "neon") {
         setDbNote("Neon connected — data loaded from database");
       }
       window.setTimeout(() => setDbNote(null), 5000);
-    });
+    })();
     return () => {
       unsub();
     };
@@ -108,7 +115,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           ) : null}
         </div>
 
-        {/* Desktop nav */}
         <nav className="mx-auto hidden max-w-6xl gap-1 overflow-x-auto px-2 pb-2 sm:flex sm:px-4">
           {NAV.map(({ to, label, icon: Icon }) => {
             const active = pathname === to;
@@ -131,7 +137,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
       </header>
 
-      {/* pb accounts for bottom nav + home indicator on phones */}
       <main className="mx-auto w-full max-w-6xl min-w-0 safe-px py-4 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 sm:pb-6">
         {dbNote ? (
           <p className="mb-3 break-words rounded-md border border-line bg-accent-soft px-3 py-2 text-[12px] text-ink">
@@ -144,7 +149,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="min-w-0 w-full">{children}</div>
       </main>
 
-      {/* Mobile bottom nav — fixed, does not scroll with content */}
       <nav
         className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-panel/98 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden"
         style={{ paddingLeft: "env(safe-area-inset-left)", paddingRight: "env(safe-area-inset-right)" }}
