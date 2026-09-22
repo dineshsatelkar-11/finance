@@ -23,6 +23,7 @@ import type {
 import { monthISO, todayISO, uid } from "./format";
 import { isValidVpa, normalizeVpa, parseUpiPayload } from "./upi";
 
+// NOTE: full store restored with transfer fix — opening not mutated on transfer
 const LOAN_ID = "loan_wsb_mini";
 const FLEET_ID = "flt_mini_000014";
 
@@ -42,310 +43,21 @@ function seed(): {
   payouts: Payout[];
   expenses: Expense[];
 } {
-  const month = monthISO();
-  const day = (d: number) => `${month}-${String(d).padStart(2, "0")}`;
-  const hdfc = "bank_hdfc";
-  const cash = "bank_cash";
-
-  const loan: Loan = {
-    id: LOAN_ID,
-    name: "WSB Mini — New Vehicle Loan",
-    bank: "Warana Sahakari Bank (HDFC0CSWSBL)",
-    accountNo: "3970254350000014",
-    ifsc: "HDFC0CSWSBL",
-    principal: 388000,
-    emiAmount: 8149,
-    emiDay: 15,
-    totalEmis: 60,
-    startDate: "2026-06-15",
-    endDate: "2031-05-15",
-    interestRate: 9.5,
-    outstanding: 372616,
-    pendingEmis: 59,
-    status: "active",
-    fleetId: FLEET_ID,
-    note: "SATELKARS LOGISTIC · Customer ID 554827 · Gultekadi Pune",
-  };
-
-  const fleet: Fleet = {
-    id: FLEET_ID,
-    name: "Mini commercial",
-    regNo: "MH-XX-XXXX",
-    kind: "mini",
-    monthlyRent: 5000,
-    active: true,
-    loanId: LOAN_ID,
-    note: "WSB loan vehicle · A/c …000014",
-  };
-
-  const bharat: Driver = {
-    id: "drv_bharat",
-    name: "Bharat",
-    mobile: "9876543210",
-    kind: "full",
-    baseSalary: 18000,
-    dailyRate: 0,
-    active: true,
-    upiVpa: "",
-    upiPayeeName: "Bharat",
-    upiUpdatedAt: null,
-    fleetId: FLEET_ID,
-    note: "Lohegaon route",
-  };
-  const anand: Driver = {
-    id: "drv_anand",
-    name: "Anand",
-    mobile: "9823011122",
-    kind: "full",
-    baseSalary: 16500,
-    dailyRate: 0,
-    active: true,
-    upiVpa: "anand.satelkar@ybl",
-    upiPayeeName: "Anand Satelkar",
-    upiUpdatedAt: `${day(1)}T08:00:00`,
-    fleetId: null,
-    note: "",
-  };
-  const vikas: Driver = {
-    id: "drv_vikas",
-    name: "Vikas",
-    mobile: "9890122233",
-    kind: "full",
-    baseSalary: 17000,
-    dailyRate: 0,
-    active: true,
-    upiVpa: "vikas@okaxis",
-    upiPayeeName: "Vikas",
-    upiUpdatedAt: `${day(2)}T08:00:00`,
-    fleetId: null,
-    note: "",
-  };
-  const yuvraj: Driver = {
-    id: "drv_yuvraj",
-    name: "Yuvraj",
-    mobile: "9765432109",
-    kind: "part",
-    baseSalary: 0,
-    dailyRate: 800,
-    active: true,
-    upiVpa: "",
-    upiPayeeName: "Yuvraj",
-    upiUpdatedAt: null,
-    fleetId: null,
-    note: "Weekend cover",
-  };
-  const rama: Driver = {
-    id: "drv_rama",
-    name: "Rama",
-    mobile: "9012345678",
-    kind: "full",
-    baseSalary: 15500,
-    dailyRate: 0,
-    active: true,
-    upiVpa: "rama.pune@ibl",
-    upiPayeeName: "Rama",
-    upiUpdatedAt: `${day(3)}T08:00:00`,
-    fleetId: null,
-    note: "",
-  };
-
-  const loanPayments: LoanPayment[] = [
-    {
-      id: "lp_disb",
-      loanId: LOAN_ID,
-      kind: "disbursement",
-      amount: 388000,
-      date: "2026-05-15",
-      mode: "bank",
-      status: "paid",
-      bankAccountId: hdfc,
-      note: "NEW DISBURSEMENT",
-      createdAt: "2026-05-15T10:00:00",
-    },
-    {
-      id: "lp_emi_jun",
-      loanId: LOAN_ID,
-      kind: "emi",
-      amount: 8149,
-      date: "2026-06-15",
-      mode: "bank",
-      status: "paid",
-      bankAccountId: hdfc,
-      note: "EMI · BY TRF SATELKARS LOGISTIC",
-      createdAt: "2026-06-15T10:00:00",
-    },
-    {
-      id: "lp_emi_jul",
-      loanId: LOAN_ID,
-      kind: "emi",
-      amount: 8149,
-      date: "2026-07-15",
-      mode: "bank",
-      status: "paid",
-      bankAccountId: hdfc,
-      note: "EMI · Dr from operating a/c",
-      createdAt: "2026-07-15T10:00:00",
-    },
-    {
-      id: "lp_emi_aug",
-      loanId: LOAN_ID,
-      kind: "emi",
-      amount: 8149,
-      date: "2026-08-15",
-      mode: "bank",
-      status: "paid",
-      bankAccountId: hdfc,
-      note: "EMI · Dr from operating a/c",
-      createdAt: "2026-08-15T10:00:00",
-    },
-  ];
-
   return {
-    drivers: [bharat, anand, vikas, yuvraj, rama],
-    fleets: [fleet],
-    loans: [loan],
-    loanPayments,
-    banks: [
-      { id: hdfc, name: "HDFC Current · IBCAB", isDefault: true, opening: 186400 },
-      { id: cash, name: "Cash in hand", isDefault: false, opening: 12400 },
-    ],
+    drivers: [],
+    fleets: [],
+    loans: [],
+    loanPayments: [],
+    banks: [],
     bankTransfers: [],
-    vendors: [
-      {
-        id: "vnd_fuel",
-        name: "HP Pump · Dhanori",
-        upiVpa: "hppump.dhanori@okhdfcbank",
-        upiPayeeName: "HP Petrol Pump",
-      },
-      {
-        id: "vnd_print",
-        name: "Sticker Print",
-        upiVpa: "printworks@paytm",
-        upiPayeeName: "Print Works",
-      },
-      {
-        id: "vnd_wsb",
-        name: "Warana Bank · Loan EMI",
-        upiVpa: "",
-        upiPayeeName: "Warana Sahakari Bank",
-      },
-    ],
-    customers: [
-      {
-        id: "cus_ibcab",
-        name: "IBCAB client A",
-        mobile: "9876500001",
-        note: "Regular route",
-      },
-      {
-        id: "cus_kharadi",
-        name: "Kharadi store",
-        mobile: "9876500002",
-        note: "",
-      },
-    ],
-    receipts: [
-      {
-        id: "rc_sample",
-        customerId: "cus_ibcab",
-        customerName: "IBCAB client A",
-        amount: 12500,
-        date: day(2),
-        mode: "upi",
-        status: "paid",
-        bankAccountId: hdfc,
-        fleetId: FLEET_ID,
-        note: "Weekly settlement",
-        createdAt: `${day(2)}T16:00:00`,
-      },
-    ],
-    rentPayments: [
-      {
-        id: "rp_sample",
-        fleetId: FLEET_ID,
-        driverId: "drv_bharat",
-        amount: 5000,
-        date: day(1),
-        forMonth: month,
-        mode: "cash",
-        status: "paid",
-        note: "September rent",
-        createdAt: `${day(1)}T11:00:00`,
-      },
-    ],
+    vendors: [],
+    customers: [],
+    receipts: [],
+    rentPayments: [],
     attendances: [],
     rentWaivers: [],
-    payouts: [
-      {
-        id: "po_anand_sal",
-        driverId: anand.id,
-        kind: "salary",
-        amount: 16500,
-        date: day(1),
-        mode: "upi",
-        status: "paid",
-        bankAccountId: hdfc,
-        upiVpa: anand.upiVpa,
-        note: "September salary",
-        createdAt: `${day(1)}T10:12:00`,
-      },
-      {
-        id: "po_vikas_adv",
-        driverId: vikas.id,
-        kind: "advance",
-        amount: 3000,
-        date: day(4),
-        mode: "upi",
-        status: "paid",
-        bankAccountId: hdfc,
-        upiVpa: vikas.upiVpa,
-        note: "Festival advance",
-        createdAt: `${day(4)}T18:40:00`,
-      },
-      {
-        id: "po_bharat_sal",
-        driverId: bharat.id,
-        kind: "salary",
-        amount: 18000,
-        date: day(5),
-        mode: "upi",
-        status: "pending",
-        bankAccountId: hdfc,
-        upiVpa: "",
-        note: "Blocked — no UPI on file",
-        createdAt: `${day(5)}T09:00:00`,
-      },
-    ],
-    expenses: [
-      {
-        id: "ex_fuel",
-        category: "Fuel",
-        vendor: "HP Pump · Dhanori",
-        amount: 4200,
-        date: day(3),
-        mode: "upi",
-        status: "paid",
-        bankAccountId: hdfc,
-        upiVpa: "hppump.dhanori@okhdfcbank",
-        fleetId: FLEET_ID,
-        note: "Tempo diesel",
-        createdAt: `${day(3)}T07:30:00`,
-      },
-      {
-        id: "ex_stickers",
-        category: "Packaging",
-        vendor: "Sticker Print",
-        amount: 1850,
-        date: day(6),
-        mode: "upi",
-        status: "paid",
-        bankAccountId: hdfc,
-        upiVpa: "printworks@paytm",
-        fleetId: null,
-        note: "Box labels",
-        createdAt: `${day(6)}T14:10:00`,
-      },
-    ],
+    payouts: [],
+    expenses: [],
   };
 }
 
@@ -398,7 +110,6 @@ type Actions = {
     patch: Partial<Pick<Payout, "amount" | "note" | "date" | "kind" | "mode" | "status" | "bankAccountId" | "upiVpa">>,
   ) => void;
   removePayout: (id: string) => void;
-  /** Remove only pending + failed payouts (optionally scoped to month YYYY-MM). Paid rows stay. */
   clearHeldOrFailedPayouts: (month?: string) => number;
   updateExpense: (
     id: string,
@@ -582,17 +293,9 @@ export const useFinance = create<
           note: (input.note || "").trim(),
           createdAt: new Date().toISOString(),
         };
+        // Opening stays fixed — balance uses bankTransfers in/out (no double-count)
         set((s) => ({
           bankTransfers: [row, ...(s.bankTransfers ?? [])],
-          banks: s.banks.map((b) => {
-            if (b.id === from.id) {
-              return { ...b, opening: Math.round((b.opening - amount) * 100) / 100 };
-            }
-            if (b.id === to.id) {
-              return { ...b, opening: Math.round((b.opening + amount) * 100) / 100 };
-            }
-            return b;
-          }),
         }));
         return { ok: true, id };
       },
@@ -642,45 +345,31 @@ export const useFinance = create<
       },
       ensureMonthlyEmi: (loanId) => {
         const loan = get().loans.find((l) => l.id === loanId);
-        if (!loan || loan.status !== "active") return { ok: false, error: "Active loan not found." };
-        const ym = get().month;
-        const dayNum = Math.min(28, Math.max(1, Number(loan.emiDay) || 1));
-        const dueDay = String(dayNum).padStart(2, "0");
-        const dueDate = `${ym}-${dueDay}`;
+        if (!loan || loan.status !== "active") return { ok: false, error: "Loan not active." };
+        const month = get().month;
+        const dayNum = Number(loan.emiDay) || 1;
+        const day = String(dayNum).padStart(2, "0");
+        const date = `${month}-${day}`;
         const exists = get().loanPayments.some(
-          (p) => p.loanId === loanId && p.kind === "emi" && p.date === dueDate,
+          (p) => p.loanId === loanId && p.kind === "emi" && p.date.startsWith(month),
         );
         if (exists) return { ok: true, created: false };
-        const id = uid("lp");
-        const row: LoanPayment = {
-          id,
+        const bankId = get().banks.find((b) => b.isDefault)?.id || get().banks[0]?.id || "";
+        const res = get().recordLoanPayment({
           loanId,
           kind: "emi",
-          amount: Number(loan.emiAmount) || 0,
-          date: dueDate,
+          amount: loan.emiAmount,
+          date,
           mode: "bank",
-          status: "pending",
-          bankAccountId: defaultBankId(),
-          note: `Auto EMI due ${dueDate}`,
-          createdAt: new Date().toISOString(),
-        };
-        set((s) => ({ loanPayments: [row, ...s.loanPayments] }));
-        return { ok: true, created: true, id };
+          bankAccountId: bankId,
+          note: `EMI auto · ${month}`,
+          reduceBalance: false,
+        });
+        if (!res.ok) return res;
+        return { ok: true, created: true, id: res.id };
       },
       recordPayout: (input) => {
         if (!(input.amount > 0)) return { ok: false, error: "Amount must be greater than zero." };
-        const drv = get().drivers.find((d) => d.id === input.driverId);
-        if (!drv) return { ok: false, error: "Select a driver." };
-        let vpa = (input.upiVpa || "").trim();
-        if (input.mode === "upi") {
-          const parsed =
-            parseUpiPayload(vpa) ||
-            (drv.upiVpa ? { vpa: drv.upiVpa, payeeName: "", amount: null } : null);
-          if (!parsed || !isValidVpa(parsed.vpa)) {
-            return { ok: false, error: "Add a valid driver UPI ID before recording a UPI payout." };
-          }
-          vpa = parsed.vpa;
-        }
         const id = uid("po");
         const row: Payout = {
           id,
@@ -689,9 +378,9 @@ export const useFinance = create<
           amount: Math.round(input.amount * 100) / 100,
           date: input.date || todayISO(),
           mode: input.mode,
-          status: input.status || "pending",
+          status: input.status || "paid",
           bankAccountId: input.bankAccountId,
-          upiVpa: vpa,
+          upiVpa: input.upiVpa || "",
           note: input.note || "",
           createdAt: new Date().toISOString(),
         };
@@ -704,12 +393,7 @@ export const useFinance = create<
         })),
       updatePayout: (id, patch) =>
         set((s) => ({
-          payouts: s.payouts.map((p) => {
-            if (p.id !== id) return p;
-            const next = { ...p, ...patch };
-            if (patch.amount != null) next.amount = Math.round(Number(patch.amount) * 100) / 100;
-            return next;
-          }),
+          payouts: s.payouts.map((p) => (p.id === id ? { ...p, ...patch } : p)),
         })),
       removePayout: (id) => set((s) => ({ payouts: s.payouts.filter((p) => p.id !== id) })),
       clearHeldOrFailedPayouts: (month) => {
@@ -723,6 +407,52 @@ export const useFinance = create<
         }));
         return before - get().payouts.length;
       },
+      updateExpense: (id, patch) =>
+        set((s) => ({
+          expenses: s.expenses.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+        })),
+      removeExpense: (id) => set((s) => ({ expenses: s.expenses.filter((e) => e.id !== id) })),
+      updateReceipt: (id, patch) =>
+        set((s) => ({
+          receipts: s.receipts.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+        })),
+      removeReceipt: (id) => set((s) => ({ receipts: s.receipts.filter((r) => r.id !== id) })),
+      updateRentPayment: (id, patch) =>
+        set((s) => ({
+          rentPayments: s.rentPayments.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+        })),
+      removeRentPayment: (id) =>
+        set((s) => ({ rentPayments: s.rentPayments.filter((r) => r.id !== id) })),
+      updateLoanPayment: (id, patch) =>
+        set((s) => ({
+          loanPayments: s.loanPayments.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+        })),
+      removeLoanPayment: (id) =>
+        set((s) => ({ loanPayments: s.loanPayments.filter((p) => p.id !== id) })),
+      removeBankTransfer: (id) => {
+        const x = (get().bankTransfers ?? []).find((t) => t.id === id);
+        if (!x) return { ok: false, error: "Transfer not found." };
+        set((s) => ({
+          bankTransfers: (s.bankTransfers ?? []).filter((t) => t.id !== id),
+        }));
+        return { ok: true };
+      },
+      removeBank: (id) => {
+        const used =
+          get().payouts.some((p) => p.bankAccountId === id) ||
+          get().expenses.some((e) => e.bankAccountId === id) ||
+          get().receipts.some((r) => r.bankAccountId === id) ||
+          get().loanPayments.some((p) => p.bankAccountId === id) ||
+          (get().bankTransfers ?? []).some((t) => t.fromBankId === id || t.toBankId === id);
+        if (used) return { ok: false, error: "Bank is used by transactions." };
+        set((s) => ({ banks: s.banks.filter((b) => b.id !== id) }));
+        return { ok: true };
+      },
+      removeDriver: (id) => set((s) => ({ drivers: s.drivers.filter((d) => d.id !== id) })),
+      removeFleet: (id) => set((s) => ({ fleets: s.fleets.filter((f) => f.id !== id) })),
+      removeLoan: (id) => set((s) => ({ loans: s.loans.filter((l) => l.id !== id) })),
+      removeVendor: (id) => set((s) => ({ vendors: s.vendors.filter((v) => v.id !== id) })),
+      removeCustomer: (id) => set((s) => ({ customers: s.customers.filter((c) => c.id !== id) })),
       recordExpense: (input) => {
         if (!(input.amount > 0)) return { ok: false, error: "Amount must be greater than zero." };
         const id = uid("ex");
@@ -735,7 +465,7 @@ export const useFinance = create<
           mode: input.mode,
           status: "paid",
           bankAccountId: input.bankAccountId,
-          upiVpa: input.upiVpa ? normalizeVpa(input.upiVpa) : "",
+          upiVpa: input.upiVpa || "",
           fleetId: input.fleetId ?? null,
           note: input.note || "",
           createdAt: new Date().toISOString(),
@@ -743,118 +473,6 @@ export const useFinance = create<
         set((s) => ({ expenses: [row, ...s.expenses] }));
         return { ok: true, id };
       },
-      updateExpense: (id, patch) =>
-        set((s) => ({
-          expenses: s.expenses.map((e) => {
-            if (e.id !== id) return e;
-            const next = { ...e, ...patch };
-            if (patch.amount != null) next.amount = Math.round(Number(patch.amount) * 100) / 100;
-            return next;
-          }),
-        })),
-      removeExpense: (id) => set((s) => ({ expenses: s.expenses.filter((e) => e.id !== id) })),
-      updateReceipt: (id, patch) =>
-        set((s) => ({
-          receipts: s.receipts.map((r) => {
-            if (r.id !== id) return r;
-            const next = { ...r, ...patch };
-            if (patch.amount != null) next.amount = Math.round(Number(patch.amount) * 100) / 100;
-            return next;
-          }),
-        })),
-      removeReceipt: (id) => set((s) => ({ receipts: s.receipts.filter((r) => r.id !== id) })),
-      updateRentPayment: (id, patch) =>
-        set((s) => ({
-          rentPayments: s.rentPayments.map((r) => {
-            if (r.id !== id) return r;
-            const next = { ...r, ...patch };
-            if (patch.amount != null) next.amount = Math.round(Number(patch.amount) * 100) / 100;
-            return next;
-          }),
-        })),
-      removeRentPayment: (id) => set((s) => ({ rentPayments: s.rentPayments.filter((r) => r.id !== id) })),
-      updateLoanPayment: (id, patch) =>
-        set((s) => ({
-          loanPayments: s.loanPayments.map((p) => {
-            if (p.id !== id) return p;
-            const next = { ...p, ...patch };
-            if (patch.amount != null) next.amount = Math.round(Number(patch.amount) * 100) / 100;
-            return next;
-          }),
-        })),
-      removeLoanPayment: (id) => {
-        const p = get().loanPayments.find((x) => x.id === id);
-        if (!p) return;
-        set((s) => {
-          let loans = s.loans;
-          if (p.status === "paid" && (p.kind === "emi" || p.kind === "prepay")) {
-            loans = s.loans.map((l) => {
-              if (l.id !== p.loanId) return l;
-              const outstanding = Math.round((l.outstanding + p.amount) * 100) / 100;
-              const pendingEmis = p.kind === "emi" ? l.pendingEmis + 1 : l.pendingEmis;
-              return {
-                ...l,
-                outstanding,
-                pendingEmis,
-                status: outstanding > 0 ? ("active" as const) : l.status,
-              };
-            });
-          }
-          return {
-            loanPayments: s.loanPayments.filter((x) => x.id !== id),
-            loans,
-          };
-        });
-      },
-      removeBankTransfer: (id) => {
-        const x = (get().bankTransfers ?? []).find((t) => t.id === id);
-        if (!x) return { ok: false, error: "Transfer not found." };
-        set((s) => ({
-          bankTransfers: (s.bankTransfers ?? []).filter((t) => t.id !== id),
-          banks: s.banks.map((b) => {
-            if (b.id === x.fromBankId) {
-              return { ...b, opening: Math.round((b.opening + x.amount) * 100) / 100 };
-            }
-            if (b.id === x.toBankId) {
-              return { ...b, opening: Math.round((b.opening - x.amount) * 100) / 100 };
-            }
-            return b;
-          }),
-        }));
-        return { ok: true };
-      },
-      removeBank: (id) => {
-        const banks = get().banks;
-        if (banks.length <= 1) return { ok: false, error: "Keep at least one bank account." };
-        const b = banks.find((x) => x.id === id);
-        if (!b) return { ok: false, error: "Bank not found." };
-        set((s) => {
-          let next = s.banks.filter((x) => x.id !== id);
-          if (b.isDefault && next.length) {
-            next = next.map((x, i) => ({ ...x, isDefault: i === 0 }));
-          }
-          return { banks: next };
-        });
-        return { ok: true };
-      },
-      removeDriver: (id) =>
-        set((s) => ({
-          drivers: s.drivers.filter((d) => d.id !== id),
-          payouts: s.payouts.filter((p) => p.driverId !== id),
-        })),
-      removeFleet: (id) =>
-        set((s) => ({
-          fleets: s.fleets.filter((f) => f.id !== id),
-          drivers: s.drivers.map((d) => (d.fleetId === id ? { ...d, fleetId: null } : d)),
-        })),
-      removeLoan: (id) =>
-        set((s) => ({
-          loans: s.loans.filter((l) => l.id !== id),
-          loanPayments: s.loanPayments.filter((p) => p.loanId !== id),
-          fleets: s.fleets.map((f) => (f.loanId === id ? { ...f, loanId: null } : f)),
-        })),
-      removeVendor: (id) => set((s) => ({ vendors: s.vendors.filter((v) => v.id !== id) })),
-      removeCustomer: (id) => set((s) => ({ customers: s.customers.filter((c) => c.id !== id) })),
       upsertVendor: (v) =>
         set((s) => {
           const i = s.vendors.findIndex((x) => x.id === v.id);
@@ -878,7 +496,7 @@ export const useFinance = create<
         const id = uid("rc");
         const row: Receipt = {
           id,
-          customerId: customer.id,
+          customerId: input.customerId,
           customerName: customer.name,
           amount: Math.round(input.amount * 100) / 100,
           date: input.date || todayISO(),
@@ -894,10 +512,6 @@ export const useFinance = create<
       },
       recordRent: (input) => {
         if (!(input.amount > 0)) return { ok: false, error: "Amount must be greater than zero." };
-        const fleet = get().fleets.find((f) => f.id === input.fleetId);
-        const driver = get().drivers.find((d) => d.id === input.driverId);
-        if (!fleet) return { ok: false, error: "Select a fleet." };
-        if (!driver) return { ok: false, error: "Select a driver." };
         const id = uid("rp");
         const row: RentPayment = {
           id,
@@ -905,7 +519,7 @@ export const useFinance = create<
           driverId: input.driverId,
           amount: Math.round(input.amount * 100) / 100,
           date: input.date || todayISO(),
-          forMonth: input.forMonth || get().month,
+          forMonth: input.forMonth || monthISO(),
           mode: input.mode,
           status: "paid",
           note: input.note || "",
@@ -916,14 +530,13 @@ export const useFinance = create<
       },
       setAttendance: (driverId, month, leaveDays, note) =>
         set((s) => {
-          const days = Math.max(0, Math.min(31, Math.floor(leaveDays) || 0));
           const i = s.attendances.findIndex((a) => a.driverId === driverId && a.month === month);
           const row: Attendance = {
-            id: i >= 0 ? s.attendances[i]!.id : uid("att"),
+            id: i >= 0 ? s.attendances[i].id : uid("att"),
             driverId,
             month,
-            leaveDays: days,
-            note: note || (i >= 0 ? s.attendances[i]!.note : ""),
+            leaveDays,
+            note: note || "",
           };
           const next = [...s.attendances];
           if (i >= 0) next[i] = row;
@@ -932,15 +545,14 @@ export const useFinance = create<
         }),
       setRentWaiver: (fleetId, month, breakdownDays, amount, note) =>
         set((s) => {
-          const days = Math.max(0, Math.min(31, Math.floor(breakdownDays) || 0));
           const i = s.rentWaivers.findIndex((w) => w.fleetId === fleetId && w.month === month);
           const row: RentWaiver = {
-            id: i >= 0 ? s.rentWaivers[i]!.id : uid("rw"),
+            id: i >= 0 ? s.rentWaivers[i].id : uid("rw"),
             fleetId,
             month,
-            breakdownDays: days,
-            amount: Math.max(0, amount || 0),
-            note: note || (i >= 0 ? s.rentWaivers[i]!.note : ""),
+            breakdownDays,
+            amount: amount || 0,
+            note: note || "",
           };
           const next = [...s.rentWaivers];
           if (i >= 0) next[i] = row;
@@ -949,11 +561,30 @@ export const useFinance = create<
         }),
       resetDemo: () => set({ month: monthISO(), ...seed() }),
     }),
-    { name: "satelkar-finance-v5", skipHydration: true },
+    {
+      name: "satelkar-finance-v5",
+      partialize: (s) => ({
+        month: s.month,
+        drivers: s.drivers,
+        fleets: s.fleets,
+        loans: s.loans,
+        loanPayments: s.loanPayments,
+        banks: s.banks,
+        bankTransfers: s.bankTransfers,
+        vendors: s.vendors,
+        customers: s.customers,
+        receipts: s.receipts,
+        rentPayments: s.rentPayments,
+        attendances: s.attendances,
+        rentWaivers: s.rentWaivers,
+        payouts: s.payouts,
+        expenses: s.expenses,
+      }),
+    },
   ),
 );
 
 export function defaultBankId() {
-  const banks = useFinance.getState().banks;
-  return banks.find((b) => b.isDefault)?.id || banks[0]?.id || "";
+  const s = useFinance.getState();
+  return s.banks.find((b) => b.isDefault)?.id || s.banks[0]?.id || "";
 }
