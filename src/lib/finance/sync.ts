@@ -203,6 +203,7 @@ function ensureWsbLoan015AndCc(): boolean {
     { id: "xfer_bajaj_to_warana_5000_20260904", fromBankId: bajajId, toBankId: currentId, amount: 5000, date: "2026-09-04", note: "Bajaj → Warana · 04-Sep", createdAt: "2026-09-04T12:00:00.000Z" },
     { id: "xfer_bajaj_to_warana_20000_20260909", fromBankId: bajajId, toBankId: currentId, amount: 20000, date: "2026-09-09", note: "Bajaj → Warana · 09-Sep", createdAt: "2026-09-09T12:00:00.000Z" },
     { id: "xfer_bajaj_to_warana_2000_20260910", fromBankId: bajajId, toBankId: currentId, amount: 2000, date: "2026-09-10", note: "Bajaj → Warana · 10-Sep", createdAt: "2026-09-10T12:00:00.000Z" },
+    { id: "xfer_cc_to_cur_5k_20260921", fromBankId: ccId, toBankId: currentId, amount: 5000, date: "2026-09-21", note: "OWN CC → Current · statement", createdAt: "2026-09-21T12:00:00.000Z" },
   ];
   const seedById = new Map(xfers.map((x) => [x.id, x]));
   const existing = useFinance.getState().bankTransfers ?? [];
@@ -297,6 +298,16 @@ function ensureWsbLoan015AndCc(): boolean {
     po("po_stmt_20260916_vikas_adv_9000", "Vikas", "advance", 9000, "2026-09-16", "Deepa Vikas advance · statement"),
     po("po_stmt_20260917_devraj_er_1500", "Devraj", "extra_route", 1500, "2026-09-17", "KOLI Devraj extra route · statement"),
     po("po_stmt_20260918_vivek_adv_300", "Vivek", "advance", 300, "2026-09-18", "Mane Rajkiran Vivek advance · statement"),
+    po("po_stmt_20260919_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-09-19", "UPI Balaji/Sandeep · statement"),
+    po("po_stmt_20260919_vikas_er_250", "Vikas", "extra_route", 250, "2026-09-19", "UPI Vikas · statement"),
+    po("po_stmt_20260919_devraj_er_500_a", "Devraj", "extra_route", 500, "2026-09-19", "Koli/Devraj extra route · statement"),
+    po("po_stmt_20260919_devraj_er_500_b", "Devraj", "extra_route", 500, "2026-09-19", "Koli/Devraj extra route · statement"),
+    po("po_stmt_20260920_devraj_er_500", "Devraj", "extra_route", 500, "2026-09-20", "Koli/Devraj extra route · statement"),
+    po("po_stmt_20260921_karan_adv_1000", "Karan", "advance", 1000, "2026-09-21", "Vaishali → Karan advance · statement"),
+    po("po_stmt_20260921_devraj_er_500", "Devraj", "extra_route", 500, "2026-09-21", "Koli/Devraj extra route · statement"),
+    po("po_stmt_20260922_ballu_er_500", "Ballu", "extra_route", 500, "2026-09-22", "AVI → Ballu extra route · statement"),
+    po("po_stmt_20260922_sandeep_er_250", "Sandeep", "extra_route", 250, "2026-09-22", "UPI Balaji/Sandeep · statement"),
+    po("po_stmt_20260922_vikas_er_250", "Vikas", "extra_route", 250, "2026-09-22", "UPI Vikas · statement"),
   ];
   const expenses: ESeed[] = [
     ex("exp_stmt_20260827_fleet8026_138", "Maintenance", "Fleet 8026", 138, "2026-08-27", "UPI Vivek · expense fleet 8026 · statement"),
@@ -328,6 +339,7 @@ function ensureWsbLoan015AndCc(): boolean {
     ex("exp_stmt_20260918_prakash_varma_20000", "Other", "Prakash Varma", 20000, "2026-09-18", "Prakash tempo body · statement"),
     ex("exp_stmt_20260918_prakash_varma_10499", "Other", "Prakash Varma", 10499, "2026-09-18", "Prakash tempo body · statement"),
     ex("exp_stmt_20260918_mane_number_plate_500", "Other", "Mane Rajkiran", 500, "2026-09-18", "Number plate · statement"),
+    ex("exp_stmt_20260921_porter_115", "Porter", "Porter", 115, "2026-09-21", "Porter · statement"),
   ];
   const existingPo = new Set(useFinance.getState().payouts.map((p) => p.id));
   const missingPo = payouts.filter((p) => !existingPo.has(p.id) && !deletedIds.has(p.id));
