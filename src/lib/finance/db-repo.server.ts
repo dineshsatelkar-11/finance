@@ -1,7 +1,3 @@
-/**
- * Server-only finance repository (Neon / PGLite via getSql).
- * Single-tenant — no user_id scoping.
- */
 import { getSql } from "@/lib/db";
 import type {
   Attendance,
@@ -91,7 +87,7 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
     ),
     sql.query(
       `select id, fleet_id, driver_id, amount, date, for_month, mode, status, note, created_at
-       from rent_payments order by date desc, created_at desc`,
+       from rent_payments order by date desc`,
     ),
     sql.query(`select id, driver_id, month, leave_days, note from attendances`),
     sql.query(`select id, fleet_id, month, breakdown_days, amount, note from rent_waivers`),
@@ -101,14 +97,22 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
     ),
   ]);
 
-  let bankTransferRows: Record<string, unknown>[] = [];
+  let bankTransfers: BankTransfer[] = [];
   try {
-    bankTransferRows = await sql.query(
-      `select id, from_bank_id, to_bank_id, amount, date, note, created_at
-       from bank_transfers order by date desc, created_at desc`,
+    const bankTransferRows = await sql.query(
+      `select id, from_bank_id, to_bank_id, amount, date, note, created_at from bank_transfers order by date desc`,
     );
+    bankTransfers = bankTransferRows.map((r) => ({
+      id: str(r.id),
+      fromBankId: str(r.from_bank_id),
+      toBankId: str(r.to_bank_id),
+      amount: num(r.amount),
+      date: dateStr(r.date),
+      note: str(r.note),
+      createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
+    }));
   } catch {
-    bankTransferRows = [];
+    bankTransfers = [];
   }
 
   return {
@@ -279,17 +283,7 @@ export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
         createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
       }),
     ),
-    bankTransfers: bankTransferRows.map(
-      (r): BankTransfer => ({
-        id: str(r.id),
-        fromBankId: str(r.from_bank_id),
-        toBankId: str(r.to_bank_id),
-        amount: num(r.amount),
-        date: dateStr(r.date),
-        note: str(r.note),
-        createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
-      }),
-    ),
+    bankTransfers,
   };
 }
 
@@ -305,6 +299,43 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
   if (!hasData) {
     return;
   }
+
+  // Refuse wipe if incoming snapshot is much smaller than what Neon already has
+  try {
+    const counts = await sql.query<{
+      drivers: number;
+      expenses: number;
+      payouts: number;
+      banks: number;
+    }>(
+      `select
+        (select count(*)::int from drivers) as drivers,
+        (select count(*)::int from expenses) as expenses,
+        (select count(*)::int from payouts) as payouts,
+        (select count(*)::int from banks) as banks`,
+    );
+    const row = counts[0];
+    const dbDrivers = Number(row?.drivers ?? 0);
+    const dbExpenses = Number(row?.expenses ?? 0);
+    const dbPayouts = Number(row?.payouts ?? 0);
+    const inDrivers = snap.drivers?.length ?? 0;
+    const inExpenses = snap.expenses?.length ?? 0;
+    const inPayouts = snap.payouts?.length ?? 0;
+    if (
+      (dbDrivers >= 3 && inDrivers < Math.max(1, Math.floor(dbDrivers * 0.5))) ||
+      (dbExpenses >= 10 && inExpenses < Math.max(1, Math.floor(dbExpenses * 0.5))) ||
+      (dbPayouts >= 10 && inPayouts < Math.max(1, Math.floor(dbPayouts * 0.5)))
+    ) {
+      console.error("[saveFinanceSnapshot] refused shrink", {
+        db: { dbDrivers, dbExpenses, dbPayouts },
+        snap: { inDrivers, inExpenses, inPayouts },
+      });
+      return;
+    }
+  } catch (e) {
+    console.error("[saveFinanceSnapshot] count check failed", e);
+  }
+
   await sql.query(`delete from loan_payments`);
   await sql.query(`delete from rent_waivers`);
   await sql.query(`delete from attendances`);
@@ -375,33 +406,29 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
   }
   for (const p of snap.payouts) {
     await sql.query(
-      `insert into payouts (
-        id, driver_id, kind, amount, date, mode, status, bank_account_id, upi_vpa, note, created_at
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      `insert into payouts (id, driver_id, kind, amount, date, mode, status, bank_account_id, upi_vpa, note, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [p.id, p.driverId, p.kind, p.amount, p.date, p.mode, p.status, p.bankAccountId, p.upiVpa, p.note, p.createdAt],
     );
   }
   for (const e of snap.expenses) {
     await sql.query(
-      `insert into expenses (
-        id, category, vendor, amount, date, mode, status, bank_account_id, upi_vpa, fleet_id, note, created_at
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      `insert into expenses (id, category, vendor, amount, date, mode, status, bank_account_id, upi_vpa, fleet_id, note, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [e.id, e.category, e.vendor, e.amount, e.date, e.mode, e.status, e.bankAccountId, e.upiVpa, e.fleetId, e.note, e.createdAt],
     );
   }
   for (const r of snap.receipts) {
     await sql.query(
-      `insert into receipts (
-        id, customer_id, customer_name, amount, date, mode, status, bank_account_id, fleet_id, note, created_at
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      `insert into receipts (id, customer_id, customer_name, amount, date, mode, status, bank_account_id, fleet_id, note, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [r.id, r.customerId, r.customerName, r.amount, r.date, r.mode, r.status, r.bankAccountId, r.fleetId, r.note, r.createdAt],
     );
   }
   for (const r of snap.rentPayments) {
     await sql.query(
-      `insert into rent_payments (
-        id, fleet_id, driver_id, amount, date, for_month, mode, status, note, created_at
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      `insert into rent_payments (id, fleet_id, driver_id, amount, date, for_month, mode, status, note, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [r.id, r.fleetId, r.driverId, r.amount, r.date, r.forMonth, r.mode, r.status, r.note, r.createdAt],
     );
   }
@@ -417,12 +444,11 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
       [w.id, w.fleetId, w.month, w.breakdownDays, w.amount, w.note],
     );
   }
-  for (const lp of snap.loanPayments) {
+  for (const p of snap.loanPayments) {
     await sql.query(
-      `insert into loan_payments (
-        id, loan_id, kind, amount, date, mode, status, bank_account_id, note, created_at
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [lp.id, lp.loanId, lp.kind, lp.amount, lp.date, lp.mode, lp.status, lp.bankAccountId, lp.note, lp.createdAt],
+      `insert into loan_payments (id, loan_id, kind, amount, date, mode, status, bank_account_id, note, created_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [p.id, p.loanId, p.kind, p.amount, p.date, p.mode, p.status, p.bankAccountId, p.note, p.createdAt],
     );
   }
   for (const x of snap.bankTransfers ?? []) {
@@ -441,36 +467,6 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
 /** Quick empty-check used by loadFinanceFromDb. */
 export async function countBanks(): Promise<number> {
   const sql = await getSql();
-  const rows = await sql.query<{ n: string | number }>(
-    `select count(*)::int as n from banks`,
-  );
-  return num(rows[0]?.n);
-}
-
-/** Wipe all finance rows (FK-safe order). Keeps schema. */
-export async function clearFinanceTables(): Promise<void> {
-  const sql = await getSql();
-  const tables = [
-    "loan_payments",
-    "rent_waivers",
-    "attendances",
-    "rent_payments",
-    "receipts",
-    "expenses",
-    "payouts",
-    "bank_transfers",
-    "customers",
-    "vendors",
-    "drivers",
-    "loans",
-    "fleets",
-    "banks",
-  ];
-  for (const t of tables) {
-    try {
-      await sql.query(`delete from ${t}`);
-    } catch {
-      // table may not exist yet (e.g. bank_transfers before migration)
-    }
-  }
+  const rows = await sql.query<{ c: number }>(`select count(*)::int as c from banks`);
+  return Number(rows[0]?.c ?? 0);
 }
