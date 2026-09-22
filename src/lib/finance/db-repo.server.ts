@@ -294,160 +294,221 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
       (snap.drivers?.length ?? 0) +
       (snap.expenses?.length ?? 0) +
       (snap.payouts?.length ?? 0) +
-      (snap.bankTransfers?.length ?? 0) >
+      (snap.bankTransfers?.length ?? 0) +
+      (snap.fleets?.length ?? 0) +
+      (snap.loans?.length ?? 0) >
     0;
   if (!hasData) {
     return;
   }
 
-  // Refuse wipe if incoming snapshot is much smaller than what Neon already has
-  try {
-    const counts = await sql.query<{
-      drivers: number;
-      expenses: number;
-      payouts: number;
-      banks: number;
-    }>(
-      `select
-        (select count(*)::int from drivers) as drivers,
-        (select count(*)::int from expenses) as expenses,
-        (select count(*)::int from payouts) as payouts,
-        (select count(*)::int from banks) as banks`,
-    );
-    const row = counts[0];
-    const dbDrivers = Number(row?.drivers ?? 0);
-    const dbExpenses = Number(row?.expenses ?? 0);
-    const dbPayouts = Number(row?.payouts ?? 0);
-    const inDrivers = snap.drivers?.length ?? 0;
-    const inExpenses = snap.expenses?.length ?? 0;
-    const inPayouts = snap.payouts?.length ?? 0;
-    if (
-      (dbDrivers >= 3 && inDrivers < Math.max(1, Math.floor(dbDrivers * 0.5))) ||
-      (dbExpenses >= 10 && inExpenses < Math.max(1, Math.floor(dbExpenses * 0.5))) ||
-      (dbPayouts >= 10 && inPayouts < Math.max(1, Math.floor(dbPayouts * 0.5)))
-    ) {
-      console.error("[saveFinanceSnapshot] refused shrink", {
-        db: { dbDrivers, dbExpenses, dbPayouts },
-        snap: { inDrivers, inExpenses, inPayouts },
-      });
-      return;
-    }
-  } catch (e) {
-    console.error("[saveFinanceSnapshot] count check failed", e);
-  }
-
-  await sql.query(`delete from loan_payments`);
-  await sql.query(`delete from rent_waivers`);
-  await sql.query(`delete from attendances`);
-  await sql.query(`delete from rent_payments`);
-  await sql.query(`delete from receipts`);
-  await sql.query(`delete from expenses`);
-  await sql.query(`delete from payouts`);
-  try {
-    await sql.query(`delete from bank_transfers`);
-  } catch {
-    /* table may not exist */
-  }
-  await sql.query(`delete from customers`);
-  await sql.query(`delete from vendors`);
-  await sql.query(`delete from drivers`);
-  await sql.query(`delete from loans`);
-  await sql.query(`delete from fleets`);
-  await sql.query(`delete from banks`);
-
-  for (const b of snap.banks) {
+  /**
+   * SAFE SAVE — never DELETE ALL.
+   * Phone A and Phone B both upsert by id. One device cannot wipe the other.
+   */
+  for (const b of snap.banks ?? []) {
     await sql.query(
-      `insert into banks (id, name, is_default, opening) values ($1, $2, $3, $4)`,
+      `insert into banks (id, name, is_default, opening) values ($1, $2, $3, $4)
+       on conflict (id) do update set
+         name = excluded.name,
+         is_default = excluded.is_default,
+         opening = excluded.opening`,
       [b.id, b.name, b.isDefault, b.opening],
     );
   }
-  for (const f of snap.fleets) {
+  for (const f of snap.fleets ?? []) {
     await sql.query(
       `insert into fleets (id, name, reg_no, kind, monthly_rent, active, loan_id, note)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict (id) do update set
+         name = excluded.name,
+         reg_no = excluded.reg_no,
+         kind = excluded.kind,
+         monthly_rent = excluded.monthly_rent,
+         active = excluded.active,
+         loan_id = excluded.loan_id,
+         note = excluded.note`,
       [f.id, f.name, f.regNo, f.kind, f.monthlyRent, f.active, f.loanId, f.note],
     );
   }
-  for (const l of snap.loans) {
+  for (const l of snap.loans ?? []) {
     await sql.query(
       `insert into loans (
         id, name, bank, account_no, ifsc, principal, emi_amount, emi_day, total_emis,
         start_date, end_date, interest_rate, outstanding, pending_emis, status, fleet_id, note
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       on conflict (id) do update set
+         name = excluded.name,
+         bank = excluded.bank,
+         account_no = excluded.account_no,
+         ifsc = excluded.ifsc,
+         principal = excluded.principal,
+         emi_amount = excluded.emi_amount,
+         emi_day = excluded.emi_day,
+         total_emis = excluded.total_emis,
+         start_date = excluded.start_date,
+         end_date = excluded.end_date,
+         interest_rate = excluded.interest_rate,
+         outstanding = excluded.outstanding,
+         pending_emis = excluded.pending_emis,
+         status = excluded.status,
+         fleet_id = excluded.fleet_id,
+         note = excluded.note`,
       [
         l.id, l.name, l.bank, l.accountNo, l.ifsc, l.principal, l.emiAmount, l.emiDay, l.totalEmis,
         l.startDate, l.endDate, l.interestRate, l.outstanding, l.pendingEmis, l.status, l.fleetId, l.note,
       ],
     );
   }
-  for (const d of snap.drivers) {
+  for (const d of snap.drivers ?? []) {
     await sql.query(
       `insert into drivers (
         id, name, mobile, kind, base_salary, daily_rate, opening_balance, active,
         upi_vpa, upi_payee_name, upi_updated_at, fleet_id, note
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       on conflict (id) do update set
+         name = excluded.name,
+         mobile = excluded.mobile,
+         kind = excluded.kind,
+         base_salary = excluded.base_salary,
+         daily_rate = excluded.daily_rate,
+         opening_balance = excluded.opening_balance,
+         active = excluded.active,
+         upi_vpa = excluded.upi_vpa,
+         upi_payee_name = excluded.upi_payee_name,
+         upi_updated_at = excluded.upi_updated_at,
+         fleet_id = excluded.fleet_id,
+         note = excluded.note`,
       [
         d.id, d.name, d.mobile, d.kind, d.baseSalary, d.dailyRate, d.openingBalance ?? 0, d.active,
         d.upiVpa, d.upiPayeeName, d.upiUpdatedAt, d.fleetId, d.note,
       ],
     );
   }
-  for (const v of snap.vendors) {
+  for (const v of snap.vendors ?? []) {
     await sql.query(
-      `insert into vendors (id, name, upi_vpa, upi_payee_name) values ($1,$2,$3,$4)`,
+      `insert into vendors (id, name, upi_vpa, upi_payee_name) values ($1,$2,$3,$4)
+       on conflict (id) do update set
+         name = excluded.name,
+         upi_vpa = excluded.upi_vpa,
+         upi_payee_name = excluded.upi_payee_name`,
       [v.id, v.name, v.upiVpa, v.upiPayeeName],
     );
   }
-  for (const c of snap.customers) {
+  for (const c of snap.customers ?? []) {
     await sql.query(
-      `insert into customers (id, name, mobile, note) values ($1,$2,$3,$4)`,
+      `insert into customers (id, name, mobile, note) values ($1,$2,$3,$4)
+       on conflict (id) do update set
+         name = excluded.name,
+         mobile = excluded.mobile,
+         note = excluded.note`,
       [c.id, c.name, c.mobile, c.note],
     );
   }
-  for (const p of snap.payouts) {
+  for (const p of snap.payouts ?? []) {
     await sql.query(
       `insert into payouts (id, driver_id, kind, amount, date, mode, status, bank_account_id, upi_vpa, note, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       on conflict (id) do update set
+         driver_id = excluded.driver_id,
+         kind = excluded.kind,
+         amount = excluded.amount,
+         date = excluded.date,
+         mode = excluded.mode,
+         status = excluded.status,
+         bank_account_id = excluded.bank_account_id,
+         upi_vpa = excluded.upi_vpa,
+         note = excluded.note`,
       [p.id, p.driverId, p.kind, p.amount, p.date, p.mode, p.status, p.bankAccountId, p.upiVpa, p.note, p.createdAt],
     );
   }
-  for (const e of snap.expenses) {
+  for (const e of snap.expenses ?? []) {
     await sql.query(
       `insert into expenses (id, category, vendor, amount, date, mode, status, bank_account_id, upi_vpa, fleet_id, note, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       on conflict (id) do update set
+         category = excluded.category,
+         vendor = excluded.vendor,
+         amount = excluded.amount,
+         date = excluded.date,
+         mode = excluded.mode,
+         status = excluded.status,
+         bank_account_id = excluded.bank_account_id,
+         upi_vpa = excluded.upi_vpa,
+         fleet_id = excluded.fleet_id,
+         note = excluded.note`,
       [e.id, e.category, e.vendor, e.amount, e.date, e.mode, e.status, e.bankAccountId, e.upiVpa, e.fleetId, e.note, e.createdAt],
     );
   }
-  for (const r of snap.receipts) {
+  for (const r of snap.receipts ?? []) {
     await sql.query(
       `insert into receipts (id, customer_id, customer_name, amount, date, mode, status, bank_account_id, fleet_id, note, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       on conflict (id) do update set
+         customer_id = excluded.customer_id,
+         customer_name = excluded.customer_name,
+         amount = excluded.amount,
+         date = excluded.date,
+         mode = excluded.mode,
+         status = excluded.status,
+         bank_account_id = excluded.bank_account_id,
+         fleet_id = excluded.fleet_id,
+         note = excluded.note`,
       [r.id, r.customerId, r.customerName, r.amount, r.date, r.mode, r.status, r.bankAccountId, r.fleetId, r.note, r.createdAt],
     );
   }
-  for (const r of snap.rentPayments) {
+  for (const r of snap.rentPayments ?? []) {
     await sql.query(
       `insert into rent_payments (id, fleet_id, driver_id, amount, date, for_month, mode, status, note, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       on conflict (id) do update set
+         fleet_id = excluded.fleet_id,
+         driver_id = excluded.driver_id,
+         amount = excluded.amount,
+         date = excluded.date,
+         for_month = excluded.for_month,
+         mode = excluded.mode,
+         status = excluded.status,
+         note = excluded.note`,
       [r.id, r.fleetId, r.driverId, r.amount, r.date, r.forMonth, r.mode, r.status, r.note, r.createdAt],
     );
   }
-  for (const a of snap.attendances) {
+  for (const a of snap.attendances ?? []) {
     await sql.query(
-      `insert into attendances (id, driver_id, month, leave_days, note) values ($1,$2,$3,$4,$5)`,
+      `insert into attendances (id, driver_id, month, leave_days, note) values ($1,$2,$3,$4,$5)
+       on conflict (id) do update set
+         driver_id = excluded.driver_id,
+         month = excluded.month,
+         leave_days = excluded.leave_days,
+         note = excluded.note`,
       [a.id, a.driverId, a.month, a.leaveDays, a.note],
     );
   }
-  for (const w of snap.rentWaivers) {
+  for (const w of snap.rentWaivers ?? []) {
     await sql.query(
-      `insert into rent_waivers (id, fleet_id, month, breakdown_days, amount, note) values ($1,$2,$3,$4,$5,$6)`,
+      `insert into rent_waivers (id, fleet_id, month, breakdown_days, amount, note) values ($1,$2,$3,$4,$5,$6)
+       on conflict (id) do update set
+         fleet_id = excluded.fleet_id,
+         month = excluded.month,
+         breakdown_days = excluded.breakdown_days,
+         amount = excluded.amount,
+         note = excluded.note`,
       [w.id, w.fleetId, w.month, w.breakdownDays, w.amount, w.note],
     );
   }
-  for (const p of snap.loanPayments) {
+  for (const p of snap.loanPayments ?? []) {
     await sql.query(
       `insert into loan_payments (id, loan_id, kind, amount, date, mode, status, bank_account_id, note, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       on conflict (id) do update set
+         loan_id = excluded.loan_id,
+         kind = excluded.kind,
+         amount = excluded.amount,
+         date = excluded.date,
+         mode = excluded.mode,
+         status = excluded.status,
+         bank_account_id = excluded.bank_account_id,
+         note = excluded.note`,
       [p.id, p.loanId, p.kind, p.amount, p.date, p.mode, p.status, p.bankAccountId, p.note, p.createdAt],
     );
   }
@@ -455,7 +516,13 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
     try {
       await sql.query(
         `insert into bank_transfers (id, from_bank_id, to_bank_id, amount, date, note, created_at)
-         values ($1,$2,$3,$4,$5,$6,$7)`,
+         values ($1,$2,$3,$4,$5,$6,$7)
+         on conflict (id) do update set
+           from_bank_id = excluded.from_bank_id,
+           to_bank_id = excluded.to_bank_id,
+           amount = excluded.amount,
+           date = excluded.date,
+           note = excluded.note`,
         [x.id, x.fromBankId, x.toBankId, x.amount, x.date, x.note, x.createdAt],
       );
     } catch {
@@ -469,4 +536,32 @@ export async function countBanks(): Promise<number> {
   const sql = await getSql();
   const rows = await sql.query<{ c: number }>(`select count(*)::int as c from banks`);
   return Number(rows[0]?.c ?? 0);
+}
+
+/** Wipe all finance rows (FK-safe order). Keeps schema. Manual / admin only. */
+export async function clearFinanceTables(): Promise<void> {
+  const sql = await getSql();
+  const tables = [
+    "loan_payments",
+    "rent_waivers",
+    "attendances",
+    "rent_payments",
+    "receipts",
+    "expenses",
+    "payouts",
+    "bank_transfers",
+    "customers",
+    "vendors",
+    "drivers",
+    "loans",
+    "fleets",
+    "banks",
+  ];
+  for (const tbl of tables) {
+    try {
+      await sql.query(`delete from ${tbl}`);
+    } catch {
+      // table may not exist yet
+    }
+  }
 }
