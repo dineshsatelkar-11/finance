@@ -6,7 +6,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -14,9 +13,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { defaultBankId, useFinance } from "@/lib/finance/store";
 import { inr, openWhatsApp, shortDate, todayISO, uid } from "@/lib/finance/format";
-import type { PayMode } from "@/lib/finance/types";
+import type { Customer, PayMode } from "@/lib/finance/types";
 
 export const Route = createFileRoute("/receipts")({ component: ReceiptsPage });
 
@@ -25,7 +30,6 @@ function ReceiptsPage() {
   const customers = useFinance((s) => s.customers);
   const fleets = useFinance((s) => s.fleets);
   const recordReceipt = useFinance((s) => s.recordReceipt);
-  const updateReceipt = useFinance((s) => s.updateReceipt);
   const removeReceipt = useFinance((s) => s.removeReceipt);
   const upsertCustomer = useFinance((s) => s.upsertCustomer);
   const removeCustomer = useFinance((s) => s.removeCustomer);
@@ -38,11 +42,49 @@ function ReceiptsPage() {
   const [note, setNote] = useState("");
   const [lastId, setLastId] = useState<string | null>(null);
 
-  // Month filter is dashboard-only — receipts list shows full history
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [custName, setCustName] = useState("");
+  const [custMobile, setCustMobile] = useState("");
+  const [custNote, setCustNote] = useState("");
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+
   const rows = useMemo(() => receipts, [receipts]);
   const total = rows.filter((r) => r.status === "paid").reduce((s, r) => s + r.amount, 0);
-  const customer = customers.find((c) => c.id === customerId);
   const last = receipts.find((r) => r.id === lastId);
+
+  function resetCustomerForm() {
+    setCustName("");
+    setCustMobile("");
+    setCustNote("");
+    setEditingCustomer(null);
+  }
+
+  function openEditCustomer(c: Customer) {
+    setEditingCustomer(c);
+    setCustName(c.name);
+    setCustMobile(c.mobile || "");
+    setCustNote(c.note || "");
+    setShowAddCustomer(true);
+  }
+
+  function saveCustomer() {
+    const name = custName.trim();
+    if (!name) {
+      toast.error("Customer name is required");
+      return;
+    }
+    const id = editingCustomer?.id || uid("cust");
+    upsertCustomer({
+      id,
+      name,
+      mobile: custMobile.trim(),
+      note: custNote.trim(),
+    });
+    setCustomerId(id);
+    toast.success(editingCustomer ? "Customer updated" : "Customer added");
+    setShowAddCustomer(false);
+    resetCustomerForm();
+  }
 
   function save() {
     const r = recordReceipt({
@@ -79,17 +121,73 @@ function ReceiptsPage() {
     ]
       .filter(Boolean)
       .join("\n");
-    openWhatsApp(c?.phone, text);
+    openWhatsApp(c?.mobile, text);
   }
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="font-display text-xl font-medium tracking-tight">Receipts</h1>
-        <p className="text-[13px] text-muted">
-          Customer payments to you. Total collected {inr(total)}.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="font-display text-xl font-medium tracking-tight">Receipts</h1>
+          <p className="text-[13px] text-muted">
+            Customer payments to you. Total collected {inr(total)}.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            resetCustomerForm();
+            setShowAddCustomer(true);
+          }}
+        >
+          <Plus className="size-4" /> Add customer
+        </Button>
       </div>
+
+      {customers.length > 0 ? (
+        <Card className="space-y-2 p-3">
+          <div className="text-[12px] font-medium text-muted">Customers</div>
+          <div className="space-y-1">
+            {customers.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-2.5 py-1.5"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{c.name}</div>
+                  {c.mobile ? (
+                    <div className="truncate text-[11px] text-muted">{c.mobile}</div>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => openEditCustomer(c)}>
+                    <Pencil className="size-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-danger"
+                    onClick={() => {
+                      if (!confirm(`Delete customer ${c.name}?`)) return;
+                      removeCustomer(c.id);
+                      if (customerId === c.id) setCustomerId("");
+                      toast.success("Customer deleted");
+                    }}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : (
+        <p className="text-sm text-muted">
+          No customers yet. Tap <span className="font-medium">Add customer</span> first, then save a
+          receipt.
+        </p>
+      )}
 
       <Card className="space-y-3 p-4">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -99,7 +197,7 @@ function ReceiptsPage() {
               <SelectTrigger>
                 <SelectValue placeholder="Select" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[200]">
                 {customers.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
@@ -122,7 +220,7 @@ function ReceiptsPage() {
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[200]">
                 <SelectItem value="upi">UPI</SelectItem>
                 <SelectItem value="cash">Cash</SelectItem>
                 <SelectItem value="bank">Bank</SelectItem>
@@ -135,7 +233,7 @@ function ReceiptsPage() {
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[200]">
                 <SelectItem value="none">None</SelectItem>
                 {fleets.map((f) => (
                   <SelectItem key={f.id} value={f.id}>
@@ -150,7 +248,7 @@ function ReceiptsPage() {
             <Input value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
         </div>
-        <Button onClick={save}>
+        <Button onClick={save} disabled={!customerId}>
           <Plus className="size-4" /> Save receipt
         </Button>
         {last ? (
@@ -198,6 +296,47 @@ function ReceiptsPage() {
             ))
         )}
       </div>
+
+      <Dialog
+        open={showAddCustomer}
+        onOpenChange={(open) => {
+          setShowAddCustomer(open);
+          if (!open) resetCustomerForm();
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingCustomer ? "Edit customer" : "Add customer"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Name *</Label>
+              <Input
+                value={custName}
+                onChange={(e) => setCustName(e.target.value)}
+                placeholder="Customer name"
+                autoFocus
+              />
+            </div>
+            <div>
+              <Label>Mobile (optional)</Label>
+              <Input
+                value={custMobile}
+                onChange={(e) => setCustMobile(e.target.value)}
+                placeholder="For WhatsApp"
+                inputMode="tel"
+              />
+            </div>
+            <div>
+              <Label>Note (optional)</Label>
+              <Input value={custNote} onChange={(e) => setCustNote(e.target.value)} />
+            </div>
+            <Button className="w-full" onClick={saveCustomer}>
+              {editingCustomer ? "Save changes" : "Add customer"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
