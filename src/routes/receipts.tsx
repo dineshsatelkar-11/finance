@@ -13,12 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { defaultBankId, useFinance } from "@/lib/finance/store";
 import { inr, openWhatsApp, shortDate, todayISO, uid } from "@/lib/finance/format";
 import type { Customer, PayMode } from "@/lib/finance/types";
@@ -42,7 +36,7 @@ function ReceiptsPage() {
   const [note, setNote] = useState("");
   const [lastId, setLastId] = useState<string | null>(null);
 
-  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [showCustomerForm, setShowCustomerForm] = useState(customers.length === 0);
   const [custName, setCustName] = useState("");
   const [custMobile, setCustMobile] = useState("");
   const [custNote, setCustNote] = useState("");
@@ -64,7 +58,7 @@ function ReceiptsPage() {
     setCustName(c.name);
     setCustMobile(c.mobile || "");
     setCustNote(c.note || "");
-    setShowAddCustomer(true);
+    setShowCustomerForm(true);
   }
 
   function saveCustomer() {
@@ -82,11 +76,16 @@ function ReceiptsPage() {
     });
     setCustomerId(id);
     toast.success(editingCustomer ? "Customer updated" : "Customer added");
-    setShowAddCustomer(false);
     resetCustomerForm();
+    setShowCustomerForm(false);
   }
 
   function save() {
+    if (!customerId) {
+      toast.error("Add or select a customer first");
+      setShowCustomerForm(true);
+      return;
+    }
     const r = recordReceipt({
       customerId,
       amount: parseFloat(amount),
@@ -138,12 +137,58 @@ function ReceiptsPage() {
           size="sm"
           onClick={() => {
             resetCustomerForm();
-            setShowAddCustomer(true);
+            setShowCustomerForm(true);
           }}
         >
           <Plus className="size-4" /> Add customer
         </Button>
       </div>
+
+      {showCustomerForm ? (
+        <Card className="space-y-3 border-primary/30 p-4">
+          <div className="text-sm font-medium">
+            {editingCustomer ? "Edit customer" : "New customer"}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Label>Name *</Label>
+              <Input
+                value={custName}
+                onChange={(e) => setCustName(e.target.value)}
+                placeholder="Customer name"
+                autoFocus
+              />
+            </div>
+            <div>
+              <Label>Mobile (optional)</Label>
+              <Input
+                value={custMobile}
+                onChange={(e) => setCustMobile(e.target.value)}
+                placeholder="For WhatsApp"
+                inputMode="tel"
+              />
+            </div>
+            <div>
+              <Label>Note (optional)</Label>
+              <Input value={custNote} onChange={(e) => setCustNote(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={saveCustomer}>
+              {editingCustomer ? "Save changes" : "Save customer"}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                resetCustomerForm();
+                setShowCustomerForm(false);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       {customers.length > 0 ? (
         <Card className="space-y-2 p-3">
@@ -154,12 +199,16 @@ function ReceiptsPage() {
                 key={c.id}
                 className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-2.5 py-1.5"
               >
-                <div className="min-w-0">
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 text-left"
+                  onClick={() => setCustomerId(c.id)}
+                >
                   <div className="truncate text-sm font-medium">{c.name}</div>
                   {c.mobile ? (
                     <div className="truncate text-[11px] text-muted">{c.mobile}</div>
                   ) : null}
-                </div>
+                </button>
                 <div className="flex shrink-0 gap-1">
                   <Button size="sm" variant="ghost" onClick={() => openEditCustomer(c)}>
                     <Pencil className="size-3.5" />
@@ -182,12 +231,11 @@ function ReceiptsPage() {
             ))}
           </div>
         </Card>
-      ) : (
+      ) : !showCustomerForm ? (
         <p className="text-sm text-muted">
-          No customers yet. Tap <span className="font-medium">Add customer</span> first, then save a
-          receipt.
+          No customers yet. Tap <span className="font-medium">Add customer</span> first.
         </p>
-      )}
+      ) : null}
 
       <Card className="space-y-3 p-4">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -248,7 +296,7 @@ function ReceiptsPage() {
             <Input value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
         </div>
-        <Button onClick={save} disabled={!customerId}>
+        <Button onClick={save}>
           <Plus className="size-4" /> Save receipt
         </Button>
         {last ? (
@@ -296,47 +344,6 @@ function ReceiptsPage() {
             ))
         )}
       </div>
-
-      <Dialog
-        open={showAddCustomer}
-        onOpenChange={(open) => {
-          setShowAddCustomer(open);
-          if (!open) resetCustomerForm();
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editingCustomer ? "Edit customer" : "Add customer"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Name *</Label>
-              <Input
-                value={custName}
-                onChange={(e) => setCustName(e.target.value)}
-                placeholder="Customer name"
-                autoFocus
-              />
-            </div>
-            <div>
-              <Label>Mobile (optional)</Label>
-              <Input
-                value={custMobile}
-                onChange={(e) => setCustMobile(e.target.value)}
-                placeholder="For WhatsApp"
-                inputMode="tel"
-              />
-            </div>
-            <div>
-              <Label>Note (optional)</Label>
-              <Input value={custNote} onChange={(e) => setCustNote(e.target.value)} />
-            </div>
-            <Button className="w-full" onClick={saveCustomer}>
-              {editingCustomer ? "Save changes" : "Add customer"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
