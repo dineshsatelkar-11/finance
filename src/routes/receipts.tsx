@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -44,14 +44,6 @@ function ReceiptsPage() {
   const [custNote, setCustNote] = useState("");
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 
-  // Set default bank after hydrate (avoid SSR empty store)
-  useEffect(() => {
-    if (!bankAccountId) {
-      const id = defaultBankId() || banks[0]?.id || "";
-      if (id) setBankAccountId(id);
-    }
-  }, [banks, bankAccountId]);
-
   const rows = useMemo(() => receipts, [receipts]);
   const total = rows.filter((r) => r.status === "paid").reduce((s, r) => s + r.amount, 0);
   const last = receipts.find((r) => r.id === lastId);
@@ -96,17 +88,12 @@ function ReceiptsPage() {
       setShowCustomerForm(true);
       return;
     }
-    const bankId = bankAccountId || defaultBankId() || banks[0]?.id || "";
-    if (!bankId) {
-      toast.error("Select which bank received this amount");
-      return;
-    }
     const r = recordReceipt({
       customerId,
       amount: parseFloat(amount),
       date,
       mode,
-      bankAccountId: bankId,
+      bankAccountId: bankAccountId || defaultBankId() || banks[0]?.id || "",
       fleetId: fleetId === "none" ? null : fleetId,
       note,
     });
@@ -292,7 +279,10 @@ function ReceiptsPage() {
           </div>
           <div>
             <Label>Received in bank</Label>
-            <Select value={bankAccountId || undefined} onValueChange={setBankAccountId}>
+            <Select
+              value={bankAccountId || defaultBankId() || banks[0]?.id || undefined}
+              onValueChange={setBankAccountId}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Which account received money?" />
               </SelectTrigger>
@@ -344,39 +334,38 @@ function ReceiptsPage() {
           rows
             .slice()
             .sort((a, b) => (a.date < b.date ? 1 : -1))
-            .map((r) => {
-              const bank = banks.find((b) => b.id === r.bankAccountId);
-              return (
-                <Card key={r.id} className="flex items-start justify-between gap-3 p-3">
-                  <div className="min-w-0">
-                    <div className="font-medium">{r.customerName}</div>
-                    <div className="text-[12px] text-muted">
-                      {shortDate(r.date)} · {r.mode.toUpperCase()}
-                      {bank ? ` · ${bank.name}` : ""}
-                      {r.note ? ` · ${r.note}` : ""}
-                    </div>
+            .map((r) => (
+              <Card key={r.id} className="flex items-start justify-between gap-3 p-3">
+                <div className="min-w-0">
+                  <div className="font-medium">{r.customerName}</div>
+                  <div className="text-[12px] text-muted">
+                    {shortDate(r.date)} · {r.mode.toUpperCase()}
+                    {banks.find((b) => b.id === r.bankAccountId)
+                      ? ` · ${banks.find((b) => b.id === r.bankAccountId)!.name}`
+                      : ""}
+                    {r.note ? ` · ${r.note}` : ""}
                   </div>
-                  <div className="shrink-0 text-right">
-                    <div className="font-medium tabular-nums text-success">{inr(r.amount)}</div>
-                    <div className="mt-1 flex justify-end gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => shareWa(r)}>
-                        WA
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-danger"
-                        onClick={() => {
-                          if (confirm("Delete receipt?")) removeReceipt(r.id);
-                        }}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="font-medium tabular-nums text-success">{inr(r.amount)}</div>
+                  <div className="mt-1 flex justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => shareWa(r)}>
+                      WA
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-danger"
+                      onClick={() => {
+                        if (confirm("Delete receipt?")) removeReceipt(r.id);
+                      }}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
                   </div>
-                </Card>
-              );
-            })
+                </div>
+              </Card>
+            ))
         )}
       </div>
     </div>
