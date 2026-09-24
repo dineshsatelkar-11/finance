@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -33,7 +33,7 @@ function ReceiptsPage() {
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayISO());
   const [mode, setMode] = useState<PayMode>("upi");
-  const [bankAccountId, setBankAccountId] = useState(() => defaultBankId());
+  const [bankAccountId, setBankAccountId] = useState("");
   const [fleetId, setFleetId] = useState("none");
   const [note, setNote] = useState("");
   const [lastId, setLastId] = useState<string | null>(null);
@@ -43,6 +43,14 @@ function ReceiptsPage() {
   const [custMobile, setCustMobile] = useState("");
   const [custNote, setCustNote] = useState("");
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+
+  // Set default bank after hydrate (avoid SSR empty store)
+  useEffect(() => {
+    if (!bankAccountId) {
+      const id = defaultBankId() || banks[0]?.id || "";
+      if (id) setBankAccountId(id);
+    }
+  }, [banks, bankAccountId]);
 
   const rows = useMemo(() => receipts, [receipts]);
   const total = rows.filter((r) => r.status === "paid").reduce((s, r) => s + r.amount, 0);
@@ -88,7 +96,7 @@ function ReceiptsPage() {
       setShowCustomerForm(true);
       return;
     }
-    const bankId = bankAccountId || defaultBankId();
+    const bankId = bankAccountId || defaultBankId() || banks[0]?.id || "";
     if (!bankId) {
       toast.error("Select which bank received this amount");
       return;
@@ -127,7 +135,7 @@ function ReceiptsPage() {
     ]
       .filter(Boolean)
       .join("\n");
-    openWhatsApp(c?.mobile, text);
+    openWhatsApp(c?.mobile || "", text);
   }
 
   return (
@@ -284,7 +292,7 @@ function ReceiptsPage() {
           </div>
           <div>
             <Label>Received in bank</Label>
-            <Select value={bankAccountId} onValueChange={setBankAccountId}>
+            <Select value={bankAccountId || undefined} onValueChange={setBankAccountId}>
               <SelectTrigger>
                 <SelectValue placeholder="Which account received money?" />
               </SelectTrigger>
