@@ -340,9 +340,10 @@ function ReceiptsPage() {
                   <div className="font-medium">{r.customerName}</div>
                   <div className="text-[12px] text-muted">
                     {shortDate(r.date)} · {r.mode.toUpperCase()}
-                    {banks.find((b) => b.id === r.bankAccountId)
-                      ? ` · ${banks.find((b) => b.id === r.bankAccountId)!.name}`
-                      : ""}
+                    {(() => {
+                      const bank = banks.find((b) => b.id === r.bankAccountId);
+                      return bank ? ` · ${bank.name}` : "";
+                    })()}
                     {r.note ? ` · ${r.note}` : ""}
                   </div>
                 </div>
