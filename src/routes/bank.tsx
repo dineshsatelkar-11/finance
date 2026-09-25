@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useFinance } from "@/lib/finance/store";
-import { clearAllFinanceData } from "@/lib/finance/sync";
+import { clearAllFinanceData, flushFinanceSave, rememberDeletedId } from "@/lib/finance/sync";
 import { inr, shortDate, uid } from "@/lib/finance/format";
 import type { BankAccount } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
@@ -198,21 +198,17 @@ function BankPage() {
           sourceId: x.id,
         });
       }
-      if (!selectedBankId || selectedBankId === x.toBankId) {
-        if (selectedBankId === x.toBankId || !selectedBankId) {
-          if (selectedBankId === x.toBankId) {
-            rows.push({
-              id: `xf-in-${x.id}`,
-              date: x.date,
-              label: `Transfer from ${fromName}`,
-              sub: x.note || "Internal transfer",
-              amount: x.amount,
-              dir: "in",
-              source: "xfer",
-              sourceId: x.id,
-            });
-          }
-        }
+      if (selectedBankId === x.toBankId) {
+        rows.push({
+          id: `xf-in-${x.id}`,
+          date: x.date,
+          label: `Transfer from ${fromName}`,
+          sub: x.note || "Internal transfer",
+          amount: x.amount,
+          dir: "in",
+          source: "xfer",
+          sourceId: x.id,
+        });
       }
     }
     rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
@@ -229,7 +225,7 @@ function BankPage() {
     selectedBankId,
   ]);
 
-  function deleteRow(r: LedgerRow) {
+  async function deleteRow(r: LedgerRow) {
     if (r.source === "xfer") {
       if (!window.confirm(`Delete transfer ${inr(r.amount)}? Both sides will be removed.`)) return;
     } else if (!window.confirm(`Delete this entry?`)) return;
@@ -247,8 +243,18 @@ function BankPage() {
       toast.message("Loan payment deleted");
     } else if (r.source === "xfer") {
       const res = removeBankTransfer(r.sourceId);
-      if (!res.ok) toast.error(res.error);
-      else toast.message("Bank transfer deleted");
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.message("Bank transfer deleted");
+    }
+    rememberDeletedId(r.sourceId);
+    const flush = await flushFinanceSave();
+    if (!flush.ok) {
+      toast.error(flush.error || "Deleted on phone but cloud save failed — may return on refresh");
+    } else {
+      toast.success("Deleted and saved to cloud");
     }
   }
 
@@ -476,7 +482,7 @@ function BankPage() {
                 <div className="min-w-0">
                   <CardTitle className="truncate">{b.name}</CardTitle>
                   {b.isDefault ? (
-                    <Badge className="mt-1" variant="secondary">
+                    <Badge className="mt-1" tone="accent">
                       Default
                     </Badge>
                   ) : null}
@@ -544,17 +550,17 @@ function BankPage() {
                       <li className="py-4 text-center text-sm text-muted">No transactions</li>
                     ) : (
                       ledgerRows.map((r) => (
-                        <li key={r.id} className="flex items-start justify-between gap-2 py-2.5">
+                        <li key={r.id} className="flex items-start justify-between gap-2 py-2">
                           <div className="min-w-0">
-                            <div className="font-medium">{r.label}</div>
-                            <div className="text-[12px] text-muted">
+                            <div className="truncate text-sm font-medium">{r.label}</div>
+                            <div className="text-[11px] text-muted">
                               {shortDate(r.date)} · {r.sub}
                             </div>
                           </div>
-                          <div className="flex shrink-0 items-center gap-2">
+                          <div className="flex shrink-0 items-center gap-1">
                             <span
                               className={cn(
-                                "font-medium tabular-nums",
+                                "tabular-nums text-sm font-medium",
                                 r.dir === "in" ? "text-success" : "text-danger",
                               )}
                             >
@@ -566,7 +572,7 @@ function BankPage() {
                               size="sm"
                               variant="ghost"
                               className="h-7 w-7 p-0 text-danger"
-                              onClick={() => deleteRow(r)}
+                              onClick={() => void deleteRow(r)}
                             >
                               <Trash2 className="size-3.5" />
                             </Button>
@@ -582,29 +588,23 @@ function BankPage() {
         })}
       </div>
 
-      {banks.length === 0 ? (
-        <Card className="p-6 text-center text-sm text-muted">No bank accounts yet. Add one to track balances.</Card>
-      ) : null}
-
-      <Card className="border-dashed p-4">
-        <p className="text-[13px] text-muted">
-          Danger zone — clears local + Neon finance data. Use only for a full reset.
+      <Card className="border-danger/30 p-4">
+        <div className="text-sm font-medium text-danger">Danger zone</div>
+        <p className="mt-1 text-[12px] text-muted">
+          Clears local + Neon finance data. Use only for a full reset.
         </p>
         <Button
           type="button"
           variant="outline"
-          className="mt-2 text-danger"
+          className="mt-3 text-danger"
           disabled={clearing}
           onClick={async () => {
-            if (!window.confirm("Clear ALL finance data? This cannot be undone.")) return;
+            if (!window.confirm("Clear ALL finance data from this app and cloud?")) return;
             setClearing(true);
-            try {
-              const res = await clearAllFinanceData();
-              if (!res.ok) toast.error(res.error || "Clear failed");
-              else toast.success("All finance data cleared");
-            } finally {
-              setClearing(false);
-            }
+            const res = await clearAllFinanceData();
+            setClearing(false);
+            if (!res.ok) toast.error(res.error || "Clear failed");
+            else toast.success("All finance data cleared");
           }}
         >
           {clearing ? "Clearing…" : "Clear all finance data"}
