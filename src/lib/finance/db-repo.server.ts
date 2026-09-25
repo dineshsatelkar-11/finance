@@ -275,8 +275,7 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
   const sql = await getSql();
   /**
    * Masters (banks/drivers/…): UPSERT only — never DELETE ALL.
-   * Full delete was wiping UPI/mobile/opening when client snapshot was partial.
-   * Transactions: replace from snapshot.
+   * Never overwrite non-empty UPI/mobile with empty string from a partial client.
    */
 
   for (const b of snap.banks) {
@@ -341,15 +340,15 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        on conflict (id) do update set
          name = excluded.name,
-         mobile = excluded.mobile,
+         mobile = CASE WHEN excluded.mobile IS NULL OR excluded.mobile = '' THEN drivers.mobile ELSE excluded.mobile END,
          kind = excluded.kind,
          base_salary = excluded.base_salary,
          daily_rate = excluded.daily_rate,
          opening_balance = excluded.opening_balance,
          active = excluded.active,
-         upi_vpa = excluded.upi_vpa,
-         upi_payee_name = excluded.upi_payee_name,
-         upi_updated_at = excluded.upi_updated_at,
+         upi_vpa = CASE WHEN excluded.upi_vpa IS NULL OR excluded.upi_vpa = '' THEN drivers.upi_vpa ELSE excluded.upi_vpa END,
+         upi_payee_name = CASE WHEN excluded.upi_payee_name IS NULL OR excluded.upi_payee_name = '' THEN drivers.upi_payee_name ELSE excluded.upi_payee_name END,
+         upi_updated_at = CASE WHEN excluded.upi_vpa IS NULL OR excluded.upi_vpa = '' THEN drivers.upi_updated_at ELSE excluded.upi_updated_at END,
          fleet_id = excluded.fleet_id,
          note = excluded.note`,
       [
@@ -363,8 +362,8 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
       `insert into vendors (id, name, upi_vpa, upi_payee_name) values ($1,$2,$3,$4)
        on conflict (id) do update set
          name = excluded.name,
-         upi_vpa = excluded.upi_vpa,
-         upi_payee_name = excluded.upi_payee_name`,
+         upi_vpa = CASE WHEN excluded.upi_vpa IS NULL OR excluded.upi_vpa = '' THEN vendors.upi_vpa ELSE excluded.upi_vpa END,
+         upi_payee_name = CASE WHEN excluded.upi_payee_name IS NULL OR excluded.upi_payee_name = '' THEN vendors.upi_payee_name ELSE excluded.upi_payee_name END`,
       [v.id, v.name, v.upiVpa, v.upiPayeeName],
     );
   }
@@ -373,7 +372,7 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
       `insert into customers (id, name, mobile, note) values ($1,$2,$3,$4)
        on conflict (id) do update set
          name = excluded.name,
-         mobile = excluded.mobile,
+         mobile = CASE WHEN excluded.mobile IS NULL OR excluded.mobile = '' THEN customers.mobile ELSE excluded.mobile END,
          note = excluded.note`,
       [c.id, c.name, c.mobile, c.note],
     );
