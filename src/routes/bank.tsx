@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useFinance } from "@/lib/finance/store";
-import { clearAllFinanceData, flushFinanceSave } from "@/lib/finance/sync";
+import { clearAllFinanceData, flushFinanceSave, rememberDeletedId } from "@/lib/finance/sync";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { inr, shortDate, uid } from "@/lib/finance/format";
 import type { BankAccount } from "@/lib/finance/types";
@@ -242,7 +242,7 @@ function BankPage() {
     selectedBankId,
   ]);
 
-  function deleteLedgerRow(r: LedgerRow) {
+  async function deleteLedgerRow(r: LedgerRow) {
     const msg =
       r.source === "xfer"
         ? `Delete transfer ${inr(r.amount)}? Both sides (debit and credit) will be removed.`
@@ -262,10 +262,20 @@ function BankPage() {
       toast.message("Loan payment deleted");
     } else if (r.source === "xfer") {
       const res = removeBankTransfer(r.sourceId);
-      if (!res.ok) toast.error(res.error);
-      else toast.message("Bank transfer deleted");
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.message("Bank transfer deleted");
     }
-    void flushFinanceSave();
+    // Remember id so Neon cannot resurrect it on next open
+    rememberDeletedId(r.sourceId);
+    const flush = await flushFinanceSave();
+    if (!flush.ok) {
+      toast.error(flush.error || "Deleted on phone but cloud save failed — may return on refresh");
+    } else {
+      toast.success("Deleted and saved to cloud");
+    }
   }
 
   function openAdd() {
@@ -534,99 +544,93 @@ function BankPage() {
                 </div>
                 <div>
                   <div className="text-[11px] uppercase tracking-wide text-muted">In</div>
-                  <div className="tabular-nums text-ok">{inr(inn)}</div>
+                  <div className="tabular-nums text-success">{inr(inn)}</div>
                 </div>
               </div>
-
-              {selected ? (
-                <div className="mt-4 border-t border-line pt-3" onClick={(e) => e.stopPropagation()}>
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-[12px] font-medium text-muted">Transactions</div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setSelectedBankId(null)}
-                    >
-                      Show all
-                    </Button>
-                  </div>
-                  <ul className="max-h-80 space-y-2 overflow-y-auto">
-                    {ledger.length === 0 ? (
-                      <li className="text-sm text-muted">No transactions on this account.</li>
-                    ) : (
-                      ledger.map((r) => (
-                        <li
-                          key={r.id}
-                          className="flex items-start justify-between gap-2 rounded-md border border-line bg-raised/50 px-3 py-2"
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium">{r.label}</div>
-                            <div className="text-[12px] text-muted">
-                              {shortDate(r.date)} · {r.sub}
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-2">
-                            <div
-                              className={
-                                r.kind === "in"
-                                  ? "tabular-nums text-ok"
-                                  : r.kind === "xfer"
-                                    ? "tabular-nums text-muted"
-                                    : "tabular-nums text-danger"
-                              }
-                            >
-                              {r.kind === "xfer" ? "↔" : r.kind === "in" ? "+" : "−"}
-                              {inr(r.amount)}
-                            </div>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-8 px-2"
-                              title="Delete"
-                              onClick={() => deleteLedgerRow(r)}
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </div>
-                        </li>
-                      ))
-                    )}
-                  </ul>
-                </div>
-              ) : null}
+              <CardHint className="mt-2">
+                Opening {inr(b.opening)}
+                {b.opening < 0 ? " (OD)" : ""} · tap to {selected ? "close" : "show"} transactions
+              </CardHint>
             </Card>
           );
         })}
       </div>
 
-      {banks.length === 0 ? (
-        <Card>
-          <CardTitle>No banks</CardTitle>
-          <CardHint>Add Warana, Bajaj, HDFC, or cash. Opening can be negative for OD.</CardHint>
-          <Button className="mt-4" onClick={openAdd}>
-            Add bank
+      {selectedBankId ? (
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium">
+            Transactions · {banks.find((b) => b.id === selectedBankId)?.name}
+          </h2>
+          {ledger.length === 0 ? (
+            <p className="text-sm text-muted">No transactions for this account.</p>
+          ) : (
+            ledger.map((r) => (
+              <Card key={r.id} className="flex items-start justify-between gap-3 p-3">
+                <div className="min-w-0">
+                  <div className="font-medium">{r.label}</div>
+                  <div className="text-[12px] text-muted">
+                    {shortDate(r.date)} · {r.sub}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div
+                    className={
+                      r.kind === "in"
+                        ? "font-medium tabular-nums text-success"
+                        : "font-medium tabular-nums text-danger"
+                    }
+                  >
+                    {r.kind === "in" ? "+" : "−"}
+                    {inr(r.amount)}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="mt-1 text-danger"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void deleteLedgerRow(r);
+                    }}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              </Card>
+            ))
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setSelectedBankId(null)}
+          >
+            Show all accounts
           </Button>
-        </Card>
-      ) : !selectedBankId ? (
-        <p className="text-center text-sm text-muted">Tap a bank card to see its transactions below the balance.</p>
+        </div>
       ) : null}
 
-      <Button
-        variant="outline"
-        disabled={clearing}
-        onClick={async () => {
-          if (!window.confirm("Clear ALL data?")) return;
-          setClearing(true);
-          const res = await clearAllFinanceData();
-          setClearing(false);
-          if (!res.ok) window.alert(res.error || "Failed");
-          else window.alert("Cleared.");
-        }}
-      >
-        {clearing ? "Clearing…" : "Clear all data"}
-      </Button>
+      <Card className="border-danger/30 p-4">
+        <div className="text-sm font-medium text-danger">Danger zone</div>
+        <p className="mt-1 text-[12px] text-muted">
+          Clears local + Neon finance data. Use only for a full reset.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-3 text-danger"
+          disabled={clearing}
+          onClick={async () => {
+            if (!window.confirm("Clear ALL finance data from this app and cloud?")) return;
+            setClearing(true);
+            const res = await clearAllFinanceData();
+            setClearing(false);
+            if (!res.ok) toast.error(res.error || "Clear failed");
+            else toast.success("All finance data cleared");
+          }}
+        >
+          {clearing ? "Clearing…" : "Clear all data"}
+        </Button>
+      </Card>
     </div>
   );
 }
