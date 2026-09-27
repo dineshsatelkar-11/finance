@@ -2,13 +2,10 @@ import { useFinance } from "./store";
 import { loadFinanceFromDb, saveFinanceToDb, clearFinanceDb } from "./db-api";
 import type {
   BankAccount,
-  BankTransfer,
   Driver,
-  Expense,
   FinanceSnapshot,
   Fleet,
   Loan,
-  Payout,
 } from "./types";
 
 const WSB_LOAN_015: Loan = {
@@ -103,26 +100,8 @@ function resolveCurrentBankId(): string {
   return WSB_CURRENT_BANK.id;
 }
 
-function resolveBajajBankId(): string {
-  const s = useFinance.getState();
-  const found = s.banks.find((b) => /bajaj/i.test(b.name))?.id;
-  if (found) return found;
-  const id = "bank_bajaj_auto";
-  s.upsertBank({ id, name: "Bajaj", isDefault: false, opening: 0 });
-  return id;
-}
-
-function resolveCcBankId(): string {
-  const s = useFinance.getState();
-  const found =
-    s.banks.find((b) => b.id === WSB_CC_BANK.id)?.id ||
-    s.banks.find((b) => /warana|warna/i.test(b.name) && /cc|cash.?credit|000001/i.test(b.name))?.id;
-  if (found) return found;
-  s.upsertBank(WSB_CC_BANK);
-  return WSB_CC_BANK.id;
-}
-
 const STMT_DELETED_KEY = "finance_wsb_stmt_deleted_v1";
+const DELETED_IDS_KEY = "finance_deleted_ids_v1";
 
 function readDeletedSeedIds(): Set<string> {
   try {
@@ -158,9 +137,6 @@ export function rememberDeletedSeedId(id: string) {
   rememberDeletedId(id);
 }
 
-/** User-deleted row ids — stops Neon from resurrecting them on hydrate/reload. */
-const DELETED_IDS_KEY = "finance_deleted_ids_v1";
-
 function readDeletedIds(): Set<string> {
   try {
     if (typeof localStorage === "undefined") return new Set();
@@ -185,14 +161,7 @@ export function rememberDeletedId(id: string) {
   }
 }
 
-function stripDeletedRows<T extends { id: string }>(rows: T[] | undefined): T[] {
-  const deleted = readDeletedIds();
-  if (!deleted.size) return rows ?? [];
-  return (rows ?? []).filter((r) => !deleted.has(r.id));
-}
-
 function ensureWsbLoan015AndCc(): boolean {
-  // Minimal ensure — masters only; statement rows already in Neon
   const s0 = useFinance.getState();
   let changed = false;
   if (!s0.fleets.some((f) => f.id === FLEET_WEGO.id || /MH-?12-?ZP-?2301/i.test(f.regNo || ""))) {
@@ -290,44 +259,6 @@ function applySnapshot(data: FinanceSnapshot) {
   });
 }
 
-function mergeLocalOnlyRows(neon: FinanceSnapshot, local: FinanceSnapshot): FinanceSnapshot {
-  const merge = <T extends { id: string }>(neonRows: T[], localRows: T[]): T[] => {
-    const map = new Map(neonRows.map((r) => [r.id, r]));
-    for (const row of localRows) {
-      if (!map.has(row.id)) map.set(row.id, row);
-    }
-    return [...map.values()];
-  };
-  return {
-    ...neon,
-    drivers: merge(neon.drivers, local.drivers),
-    fleets: merge(neon.fleets, local.fleets),
-    loans: merge(neon.loans, local.loans),
-    banks: merge(neon.banks, local.banks),
-    vendors: merge(neon.vendors ?? [], local.vendors ?? []),
-    customers: merge(neon.customers ?? [], local.customers ?? []),
-    payouts: stripDeletedRows(merge(neon.payouts, local.payouts)),
-    expenses: stripDeletedRows(merge(neon.expenses, local.expenses)),
-    receipts: stripDeletedRows(merge(neon.receipts ?? [], local.receipts ?? [])),
-    loanPayments: stripDeletedRows(merge(neon.loanPayments ?? [], local.loanPayments ?? [])),
-    bankTransfers: stripDeletedRows(merge(neon.bankTransfers ?? [], local.bankTransfers ?? [])),
-    rentPayments: stripDeletedRows(merge(neon.rentPayments ?? [], local.rentPayments ?? [])),
-    attendances: stripDeletedRows(merge(neon.attendances ?? [], local.attendances ?? [])),
-    rentWaivers: stripDeletedRows(merge(neon.rentWaivers ?? [], local.rentWaivers ?? [])),
-  };
-}
-
-function localHasUserData(s: FinanceSnapshot): boolean {
-  return (
-    (s.drivers?.length ?? 0) +
-      (s.banks?.length ?? 0) +
-      (s.payouts?.length ?? 0) +
-      (s.expenses?.length ?? 0) +
-      (s.receipts?.length ?? 0) >
-    0
-  );
-}
-
 async function pushSnapshot(snap: FinanceSnapshot) {
   return saveFinanceToDb({ data: snap } as never);
 }
@@ -340,32 +271,46 @@ export async function hydrateFinanceFromDb(): Promise<{
   if (hydrating) return { ok: true, source: "local" };
   hydrating = true;
   try {
+    // Cloud-only: clear any old phone cache so it cannot override Neon
+    try {
+      if (typeof localStorage !== "undefined") {
+        localStorage.removeItem("satelkar-finance-v5");
+      }
+    } catch {
+      // ignore
+    }
+
     const res = await loadFinanceFromDb();
     if (!res.ok) {
+      applySnapshot(EMPTY_FINANCE_SNAPSHOT);
       hydrated = true;
-      return { ok: false, source: "local", error: res.error };
+      return { ok: false, source: "local", error: res.error || "Cloud DB offline" };
     }
-    const localBefore = snapshotFromStore();
     if (res.empty || !res.data) {
-      if (localHasUserData(localBefore)) {
-        applySnapshot(localBefore);
-        hydrated = true;
-        void flushFinanceSave();
-        return { ok: true, source: "seed-pushed" };
-      }
       applySnapshot(EMPTY_FINANCE_SNAPSHOT);
       hydrated = true;
       const seeded = ensureWsbLoan015AndCc();
       if (seeded) void flushFinanceSave();
       return { ok: true, source: "neon" };
     }
-    const merged = mergeLocalOnlyRows(res.data, localBefore);
-    applySnapshot(merged);
+    // Neon wins 100% — no merge from phone memory
+    applySnapshot({
+      ...res.data,
+      bankTransfers: res.data.bankTransfers ?? [],
+      vendors: res.data.vendors ?? [],
+      customers: res.data.customers ?? [],
+      receipts: res.data.receipts ?? [],
+      loanPayments: res.data.loanPayments ?? [],
+      rentPayments: res.data.rentPayments ?? [],
+      attendances: res.data.attendances ?? [],
+      rentWaivers: res.data.rentWaivers ?? [],
+    });
     const added = ensureWsbLoan015AndCc();
     hydrated = true;
     if (added) void flushFinanceSave();
     return { ok: true, source: "neon" };
   } catch (e) {
+    applySnapshot(EMPTY_FINANCE_SNAPSHOT);
     hydrated = true;
     return {
       ok: false,
