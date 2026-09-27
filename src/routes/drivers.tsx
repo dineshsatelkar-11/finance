@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Wallet } from "lucide-react";
+import { Trash2, Wallet } from "lucide-react";
+import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import {
   shortDate,
   suggestedSalary,
 } from "@/lib/finance/format";
+import { flushFinanceSave, rememberDeletedId, rememberDeletedSeedId } from "@/lib/finance/sync";
 import { cn } from "@/lib/utils";
 import type { Payout } from "@/lib/finance/types";
 
@@ -44,9 +46,29 @@ function DriversPage() {
   const month = useFinance((s) => s.month);
   const payouts = useFinance((s) => s.payouts);
   const attendances = useFinance((s) => s.attendances);
+  const removePayout = useFinance((s) => s.removePayout);
   const [payOpen, setPayOpen] = useState(false);
   const [payId, setPayId] = useState<string | null>(null);
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function deleteTx(p: Payout) {
+    if (!window.confirm(`Delete this ${kindLabel(p.kind)} of ₹${p.amount}?`)) return;
+    setDeletingId(p.id);
+    try {
+      rememberDeletedSeedId(p.id);
+      rememberDeletedId(p.id);
+      removePayout(p.id);
+      const flush = await flushFinanceSave();
+      if (!flush.ok) {
+        toast.error(flush.error || "Deleted on phone — cloud save failed");
+        return;
+      }
+      toast.message("Deleted");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const active = drivers.filter((d) => d.active);
 
@@ -167,14 +189,27 @@ function DriversPage() {
                                   {p.note ? ` · ${p.note}` : ""}
                                 </div>
                               </div>
-                              <div
-                                className={cn(
-                                  "shrink-0 tabular-nums",
-                                  isIn ? "text-ok" : isNeutral ? "text-muted" : "text-danger",
-                                )}
-                              >
-                                {isIn ? "+" : isNeutral ? "" : "−"}
-                                {inr(p.amount)}
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                <div
+                                  className={cn(
+                                    "tabular-nums",
+                                    isIn ? "text-ok" : isNeutral ? "text-muted" : "text-danger",
+                                  )}
+                                >
+                                  {isIn ? "+" : isNeutral ? "" : "−"}
+                                  {inr(p.amount)}
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-[11px] text-danger"
+                                  disabled={deletingId === p.id}
+                                  onClick={() => void deleteTx(p)}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                  {deletingId === p.id ? "…" : "Del"}
+                                </Button>
                               </div>
                             </li>
                           );
