@@ -50,24 +50,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     let unsub = () => {};
     void (async () => {
-      // Wait for localStorage before Neon so UI-added advances are not wiped
-      try {
-        await useFinance.persist.rehydrate();
-      } catch {
-        // ignore
-      }
+      // Cloud-only: load finance from Neon. Phone memory is not used.
       unsub = startFinanceDbSync();
       const r = await hydrateFinanceFromDb();
       if (!r.ok) {
-        setDbNote(r.error ? `DB offline: ${r.error}` : "DB offline — using local data");
+        setDbNote(r.error ? `Cloud DB offline: ${r.error}` : "Cloud DB offline — cannot load finance");
         return;
       }
-      if (r.source === "seed-pushed") {
-        setDbNote("Neon connected — statement data restored");
-      } else if (r.source === "neon") {
-        setDbNote("Neon connected — data loaded from database");
-      }
-      window.setTimeout(() => setDbNote(null), 5000);
+      setDbNote("Cloud DB connected — all pages use Neon only");
+      window.setTimeout(() => setDbNote(null), 4000);
     })();
     return () => {
       unsub();
