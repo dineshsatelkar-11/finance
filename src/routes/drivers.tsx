@@ -85,8 +85,8 @@ function DriversPage() {
       <div>
         <h1 className="font-display text-3xl font-medium tracking-tight">Drivers</h1>
         <p className="mt-1 text-sm text-muted">
-          Balance + month salary. Tap a card to see transactions. Calculated month-end; usually paid next
-          month 10–15 (net = salary − advances).
+          Balance = opening − advances + returns − fines + salary slips. Gross uses calendar days in the
+          month (leave default 0). Month-end post salary to balance; ~10th pay cash as advance.
         </p>
       </div>
 
@@ -105,7 +105,7 @@ function DriversPage() {
             const bal = driverBalance(d, month, payouts);
             const leave =
               attendances.find((a) => a.driverId === d.id && a.month === month)?.leaveDays ?? 0;
-            const gross = suggestedSalary(d, leave);
+            const gross = suggestedSalary(d, leave, month);
             const adv = monthAdvances(d.id, month, payouts);
             const net = netSalaryPayable(d, leave, month, payouts);
             const balClass = bal < 0 ? "text-warn" : bal > 0 ? "text-ink" : "text-muted";
@@ -132,7 +132,7 @@ function DriversPage() {
                       {inr(bal)}
                     </p>
                     <p className="text-[11px] text-subtle">
-                      Running balance · advances only · tap to {selected ? "close" : "show"} transactions
+                      Running balance · tap to {selected ? "close" : "show"} transactions
                     </p>
                     {gross > 0 ? (
                       <p className="mt-1 text-[11px] text-muted tabular-nums">
@@ -140,7 +140,7 @@ function DriversPage() {
                         {adv > 0 ? ` − adv ${inr(adv)}` : ""}
                         {" → "}
                         <span className={net < 0 ? "text-warn" : "text-ink"}>net {inr(net)}</span>
-                        <span className="text-subtle"> · pay next month ~10–15</span>
+                        <span className="text-subtle"> · slip → balance; cash ~10th as advance</span>
                       </p>
                     ) : null}
                   </div>
@@ -179,7 +179,8 @@ function DriversPage() {
                       ) : (
                         driverTx.map((p) => {
                           const isIn = p.kind === "return";
-                          const isNeutral = p.kind === "extra_route" || p.kind === "salary" || p.kind === "bonus";
+                          const isNeutral = p.kind === "extra_route" || p.kind === "bonus";
+                          const isSalary = p.kind === "salary";
                           return (
                             <li key={p.id} className="flex items-center justify-between gap-2 py-2.5 text-sm">
                               <div className="min-w-0 flex-1">
@@ -193,10 +194,10 @@ function DriversPage() {
                                 <div
                                   className={cn(
                                     "tabular-nums",
-                                    isIn ? "text-ok" : isNeutral ? "text-muted" : "text-danger",
+                                    isIn || isSalary ? "text-ok" : isNeutral ? "text-muted" : "text-danger",
                                   )}
                                 >
-                                  {isIn ? "+" : isNeutral ? "" : "−"}
+                                  {isIn || isSalary ? "+" : isNeutral ? "" : "−"}
                                   {inr(p.amount)}
                                 </div>
                                 <Button
