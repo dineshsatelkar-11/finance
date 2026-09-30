@@ -25,9 +25,8 @@ function Overview() {
 
   const monthPayouts = payouts.filter((p) => p.date.startsWith(month));
   const monthExp = expenses.filter((e) => e.date.startsWith(month));
-  const salaryPaid = monthPayouts
-    .filter((p) => p.kind === "salary" && p.status === "paid")
-    .reduce((s, p) => s + p.amount, 0);
+  // Salary slips are accrual only (company-owe balance) — not bank cash out.
+  // Real cash to drivers is recorded as advance (or extra_route).
   const advances = monthPayouts
     .filter((p) => p.kind === "advance" && p.status === "paid")
     .reduce((s, p) => s + p.amount, 0);
@@ -50,7 +49,7 @@ function Overview() {
   );
   const pendingEmiAmt = pendingEmi.reduce((s, p) => s + p.amount, 0);
   const bankCash =
-    banks.reduce((s, b) => s + b.opening, 0) - salaryPaid - advances - extra - expPaid + returnsIn;
+    banks.reduce((s, b) => s + b.opening, 0) - advances - extra - expPaid + returnsIn;
 
   function clearHeldFailed() {
     const n = clearHeldOrFailedPayouts(month);
@@ -86,7 +85,7 @@ function Overview() {
           <Card className="h-full p-4 transition hover:border-accent/40">
             <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">Cash position</div>
             <div className="mt-2 font-display text-2xl font-medium tabular-nums tracking-tight">{inr(bankCash)}</div>
-            <div className="mt-1 text-[12px] text-subtle">Opening less paid out + returns · bank →</div>
+            <div className="mt-1 text-[12px] text-subtle">Opening − advances − expenses + returns · bank →</div>
           </Card>
         </Link>
 
@@ -157,8 +156,8 @@ function Overview() {
         <Card>
           <CardTitle>Drivers</CardTitle>
           <CardHint>
-            Balance = opening − advances + returns − fines. Return is money back from driver (not an
-            advance). Salary / extra route not in balance. Tap for transactions.
+            Balance = opening − advances + returns − fines + salary slips. Cash paid is advance;
+            salary slip only accrues company-owe. Tap for transactions.
           </CardHint>
           <ul className="mt-4 divide-y divide-line">
             {drivers
@@ -185,7 +184,7 @@ function Overview() {
                       href={`/payouts?driver=${encodeURIComponent(d.id)}`}
                       className={cn(
                         "text-right text-sm tabular-nums font-medium underline-offset-2 hover:underline",
-                        bal > 0 ? "text-warn" : bal < 0 ? "text-ok" : "text-muted",
+                        bal > 0 ? "text-ok" : bal < 0 ? "text-warn" : "text-muted",
                       )}
                     >
                       <div>{inr(bal)}</div>
