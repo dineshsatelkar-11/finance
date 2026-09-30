@@ -104,33 +104,56 @@ export function openWhatsApp(mobile: string, text: string) {
 export function suggestedSalary(
   driver: { kind: string; baseSalary: number; dailyRate: number },
   leaveDays = 0,
-  /** YYYY-MM → use that month's day count; or pass a number of working days. */
-  monthOrDays: string | number = WORKING_DAYS,
+  /** YYYY-MM → use that month's calendar day count (28–31). Number = explicit day base. */
+  monthOrDays: string | number = monthISO(),
 ) {
-  const workingDays =
-    typeof monthOrDays === "string" && /^\d{4}-\d{2}$/.test(monthOrDays)
-      ? daysInMonth(monthOrDays)
-      : Math.max(1, Math.floor(Number(monthOrDays)) || WORKING_DAYS);
+  let workingDays: number;
+  if (typeof monthOrDays === "string" && /^\d{4}-\d{2}$/.test(monthOrDays)) {
+    workingDays = daysInMonth(monthOrDays);
+  } else if (typeof monthOrDays === "number" && Number.isFinite(monthOrDays) && monthOrDays > 0) {
+    workingDays = Math.max(1, Math.floor(monthOrDays));
+  } else {
+    // Never fall back to fixed 26 — use current calendar month length.
+    workingDays = daysInMonth(monthISO());
+  }
   const leave = Math.max(0, Math.min(workingDays, Math.floor(leaveDays) || 0));
   const present = Math.max(0, workingDays - leave);
   if (driver.kind === "part") {
     return Math.round((driver.dailyRate || 0) * present);
   }
   if (!(driver.baseSalary > 0)) return 0;
+  // e.g. base 14000, Sep 30 days, leave 22 → present 8 → round(14000 * 8 / 30) = 3733
   return Math.round((driver.baseSalary * present) / workingDays);
 }
 
-/** Paid advances for a driver in a calendar month (YYYY-MM). */
+/**
+ * Paid advances for a driver through the end of a salary month (or through today
+ * when settling the current month). Includes money already paid early as "advance"
+ * (salary paid ahead is usually recorded as advance).
+ */
 export function monthAdvances(
   driverId: string,
   month: string,
   payouts: { driverId: string; kind: string; amount: number; status: string; date: string }[],
+  /** Optional YYYY-MM-DD — defaults to last day of `month` or today, whichever is earlier when month is current. */
+  throughDate?: string,
 ) {
+  const dim = daysInMonth(month);
+  const lastOfMonth = `${month}-${String(dim).padStart(2, "0")}`;
+  const today = todayISO();
+  // Cap at end of salary month; if still inside that month, also don't go past today.
+  let through = throughDate && /^\d{4}-\d{2}-\d{2}$/.test(throughDate) ? throughDate : lastOfMonth;
+  if (through > lastOfMonth) through = lastOfMonth;
+  if (month === today.slice(0, 7) && through > today) through = today;
+
   let sum = 0;
   for (const p of payouts) {
-    if (p.driverId !== driverId || p.kind !== "advance" || p.status !== "paid") continue;
-    if (!p.date.startsWith(month)) continue;
-    sum += p.amount;
+    if (p.driverId !== driverId || p.status !== "paid") continue;
+    // Early salary cash is recorded as advance; only those reduce the settlement.
+    if (p.kind !== "advance") continue;
+    const d = String(p.date || "").slice(0, 10);
+    if (!d || d > through) continue;
+    sum += Number(p.amount) || 0;
   }
   return Math.round(sum * 100) / 100;
 }
