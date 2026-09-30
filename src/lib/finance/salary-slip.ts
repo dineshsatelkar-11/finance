@@ -80,88 +80,95 @@ export function buildSalarySlipData(input: {
 
 export function salarySlipWhatsAppText(d: SalarySlipData): string {
   const lines = [
-    `*${d.company}*`,
-    `*Salary slip — ${d.monthLabel}*`,
-    ``,
-    `Driver: ${d.driverName}`,
-    `Date: ${d.date}`,
-    ``,
-    `Gross salary: ${inr(d.gross)}`,
-    `Total leave: ${d.leaveDays} day(s)`,
+    "*" + d.company + "*",
+    "*Salary slip - " + d.monthLabel + "*",
+    "",
+    "Driver: " + d.driverName,
+    "Date: " + d.date,
+    "",
+    "Gross salary: " + inr(d.gross),
+    "Total leave: " + d.leaveDays + " day(s)",
   ];
-  if (d.bonus > 0) lines.push(`Bonus: +${inr(d.bonus)}`);
-  if (d.rent > 0) lines.push(`Tempo rent: -${inr(d.rent)}`);
-  if (d.deduction > 0) lines.push(`Deduction: -${inr(d.deduction)}`);
+  if (d.bonus > 0) lines.push("Bonus: +" + inr(d.bonus));
+  if (d.rent > 0) lines.push("Tempo rent: -" + inr(d.rent));
+  if (d.deduction > 0) lines.push("Deduction: -" + inr(d.deduction));
   lines.push(
     d.balanceBefore < 0
-      ? `Advance / earlier balance: -${inr(Math.abs(d.balanceBefore))}`
-      : `Earlier balance: ${inr(d.balanceBefore)}`,
+      ? "Advance / earlier balance: -" + inr(Math.abs(d.balanceBefore))
+      : "Earlier balance: " + inr(d.balanceBefore),
   );
-  lines.push(`*Salary slip: ${inr(d.slipAmount)}*`);
+  lines.push("*Salary slip: " + inr(d.slipAmount) + "*");
   lines.push(
     d.balanceAfter >= 0
-      ? `*Net payable (company owes): ${inr(d.balanceAfter)}*`
-      : `*Still over-advanced: ${inr(Math.abs(d.balanceAfter))}*`,
+      ? "*Net payable (company owes): " + inr(d.balanceAfter) + "*"
+      : "*Still over-advanced: " + inr(Math.abs(d.balanceAfter)) + "*",
   );
-  lines.push(``);
-  lines.push(`_Account slip only. Cash paid later as advance._`);
+  lines.push("");
+  lines.push("_Account slip only. Cash paid later as advance._");
   return lines.join("\n");
 }
 
 function escapeHtml(s: string) {
+  // Build entities without literal & so APIs cannot strip them.
+  const e = (name: string) => String.fromCharCode(38) + name + ";";
   return String(s)
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">")
-    .replace(/"/g, """);
+    .replace(/&/g, e("amp"))
+    .replace(/</g, e("lt"))
+    .replace(/>/g, e("gt"))
+    .replace(/"/g, e("quot"));
 }
 
 export function salarySlipHtml(d: SalarySlipData): string {
   const row = (label: string, value: string, bold = false) =>
-    `<tr><td style="padding:8px 0;color:#555;border-bottom:1px solid #eee">${escapeHtml(label)}</td>` +
-    `<td style="padding:8px 0;text-align:right;border-bottom:1px solid #eee;${bold ? "font-weight:700;font-size:16px" : ""}">${escapeHtml(value)}</td></tr>`;
+    "<tr><td style=\"padding:8px 0;color:#555;border-bottom:1px solid #eee\">" +
+    escapeHtml(label) +
+    "</td><td style=\"padding:8px 0;text-align:right;border-bottom:1px solid #eee;" +
+    (bold ? "font-weight:700;font-size:16px" : "") +
+    "\">" +
+    escapeHtml(value) +
+    "</td></tr>";
 
   const balBefore =
     d.balanceBefore < 0
-      ? `- ${inr(Math.abs(d.balanceBefore))} (advance)`
+      ? "- " + inr(Math.abs(d.balanceBefore)) + " (advance)"
       : inr(d.balanceBefore);
   const netLine =
     d.balanceAfter >= 0
-      ? `Company owes ${inr(d.balanceAfter)}`
-      : `Over-advanced ${inr(Math.abs(d.balanceAfter))}`;
+      ? "Company owes " + inr(d.balanceAfter)
+      : "Over-advanced " + inr(Math.abs(d.balanceAfter));
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Salary slip - ${escapeHtml(d.driverName)}</title>
-<style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:24px;color:#111;background:#f5f5f5}
-  .sheet{max-width:420px;margin:0 auto;background:#fff;border-radius:12px;padding:28px 24px;box-shadow:0 2px 12px rgba(0,0,0,.08)}
-  .hdr{text-align:center;border-bottom:2px solid #0f2744;padding-bottom:16px;margin-bottom:16px}
-  .hdr h1{margin:0;font-size:20px;letter-spacing:.02em;color:#0f2744}
-  .hdr p{margin:6px 0 0;font-size:13px;color:#666}
-  table{width:100%;border-collapse:collapse;font-size:14px}
-  .foot{margin-top:18px;font-size:11px;color:#888;text-align:center;line-height:1.4}
-  @media print{body{background:#fff;padding:0}.sheet{box-shadow:none;max-width:none}}
-</style></head><body>
-<div class="sheet">
-  <div class="hdr">
-    <h1>${escapeHtml(d.company)}</h1>
-    <p>Salary slip · ${escapeHtml(d.monthLabel)}</p>
-  </div>
-  <p style="margin:0 0 4px;font-size:15px;font-weight:600">${escapeHtml(d.driverName)}</p>
-  <p style="margin:0 0 16px;font-size:12px;color:#666">Date: ${escapeHtml(d.date)}</p>
-  <table>
-    ${row("Gross salary", inr(d.gross))}
-    ${row("Total leave", String(d.leaveDays) + " day(s)")}
-    ${d.bonus > 0 ? row("Bonus", "+ " + inr(d.bonus)) : ""}
-    ${d.rent > 0 ? row("Tempo rent", "- " + inr(d.rent)) : ""}
-    ${d.deduction > 0 ? row("Deduction", "- " + inr(d.deduction)) : ""}
-    ${row("Advance / earlier balance", balBefore)}
-    ${row("Salary slip amount", inr(d.slipAmount), true)}
-    ${row("Net payable", netLine, true)}
-  </table>
-  <p class="foot">This is an account slip only.<br/>Cash is paid later as advance (~10th).</p>
-</div>
-<script>window.onload=function(){setTimeout(function(){window.print()},300)}</script>
-</body></html>`;
+  return (
+    "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><title>Salary slip - " +
+    escapeHtml(d.driverName) +
+    "</title><style>" +
+    "body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:24px;color:#111;background:#f5f5f5}" +
+    ".sheet{max-width:420px;margin:0 auto;background:#fff;border-radius:12px;padding:28px 24px;box-shadow:0 2px 12px rgba(0,0,0,.08)}" +
+    ".hdr{text-align:center;border-bottom:2px solid #0f2744;padding-bottom:16px;margin-bottom:16px}" +
+    ".hdr h1{margin:0;font-size:20px;letter-spacing:.02em;color:#0f2744}" +
+    ".hdr p{margin:6px 0 0;font-size:13px;color:#666}" +
+    "table{width:100%;border-collapse:collapse;font-size:14px}" +
+    ".foot{margin-top:18px;font-size:11px;color:#888;text-align:center;line-height:1.4}" +
+    "@media print{body{background:#fff;padding:0}.sheet{box-shadow:none;max-width:none}}" +
+    "</style></head><body><div class=\"sheet\"><div class=\"hdr\"><h1>" +
+    escapeHtml(d.company) +
+    "</h1><p>Salary slip · " +
+    escapeHtml(d.monthLabel) +
+    "</p></div><p style=\"margin:0 0 4px;font-size:15px;font-weight:600\">" +
+    escapeHtml(d.driverName) +
+    "</p><p style=\"margin:0 0 16px;font-size:12px;color:#666\">Date: " +
+    escapeHtml(d.date) +
+    "</p><table>" +
+    row("Gross salary", inr(d.gross)) +
+    row("Total leave", String(d.leaveDays) + " day(s)") +
+    (d.bonus > 0 ? row("Bonus", "+ " + inr(d.bonus)) : "") +
+    (d.rent > 0 ? row("Tempo rent", "- " + inr(d.rent)) : "") +
+    (d.deduction > 0 ? row("Deduction", "- " + inr(d.deduction)) : "") +
+    row("Advance / earlier balance", balBefore) +
+    row("Salary slip amount", inr(d.slipAmount), true) +
+    row("Net payable", netLine, true) +
+    "</table><p class=\"foot\">This is an account slip only.<br/>Cash is paid later as advance (~10th).</p></div>" +
+    "<script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>"
+  );
 }
 
 export function printSalarySlip(d: SalarySlipData) {
@@ -227,7 +234,7 @@ export function shareSalarySlipWhatsApp(d: SalarySlipData) {
 
 function buildSimplePdf(lines: string[]): Uint8Array {
   const esc = (s: string) =>
-    s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+    s.split("\\").join("\\\\").split("(").join("\\(").split(")").join("\\)");
   const contentLines: string[] = ["BT", "/F1 11 Tf", "50 780 Td", "14 TL"];
   lines.forEach((line, i) => {
     if (i === 0) contentLines.push("(" + esc(line) + ") Tj");
