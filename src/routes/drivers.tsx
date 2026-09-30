@@ -6,6 +6,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PaySheet } from "@/components/finance/pay-sheet";
+import {
+  downloadSalarySlipPdf,
+  printSalarySlip,
+  slipFromSalaryPayout,
+} from "@/lib/finance/salary-slip";
 import { useFinance } from "@/lib/finance/store";
 import {
   driverBalance,
@@ -43,6 +48,7 @@ function kindLabel(kind: Payout["kind"]) {
 
 function DriversPage() {
   const drivers = useFinance((s) => s.drivers);
+  const fleets = useFinance((s) => s.fleets);
   const month = useFinance((s) => s.month);
   const payouts = useFinance((s) => s.payouts);
   const attendances = useFinance((s) => s.attendances);
@@ -129,10 +135,15 @@ function DriversPage() {
                       {selected ? <Badge tone="ok">Open</Badge> : null}
                     </div>
                     <p className={cn("mt-0.5 text-lg font-medium tabular-nums tracking-tight", balClass)}>
-                      {inr(bal)}
+                      {inr(Math.abs(bal))}
                     </p>
                     <p className="text-[11px] text-subtle">
-                      Running balance · tap to {selected ? "close" : "show"} transactions
+                      {bal > 0
+                        ? "Company owes · "
+                        : bal < 0
+                          ? "Advance / driver owes · "
+                          : "Settled · "}
+                      tap to {selected ? "close" : "show"} transactions
                     </p>
                     {gross > 0 ? (
                       <p className="mt-1 text-[11px] text-muted tabular-nums">
@@ -200,6 +211,25 @@ function DriversPage() {
                                   {isIn || isSalary ? "+" : isNeutral ? "" : "−"}
                                   {inr(p.amount)}
                                 </div>
+                                {isSalary ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 px-2 text-[11px]"
+                                    onClick={() => {
+                                      const leave =
+                                        attendances.find(
+                                          (a) => a.driverId === d.id && a.month === p.date.slice(0, 7),
+                                        )?.leaveDays ?? 0;
+                                      const slip = slipFromSalaryPayout(d, p, payouts, fleets, leave);
+                                      downloadSalarySlipPdf(slip);
+                                      printSalarySlip(slip);
+                                    }}
+                                  >
+                                    Slip
+                                  </Button>
+                                ) : null}
                                 <Button
                                   type="button"
                                   variant="outline"
