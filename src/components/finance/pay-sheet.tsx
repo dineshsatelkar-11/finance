@@ -211,6 +211,102 @@ export function PaySheet({
     onOpenChange(false);
   }
 
+  /** Plain-text salary slip for WhatsApp (not PDF). */
+  function salarySlipWhatsAppText() {
+    if (!driver || !settle) return "";
+    const slip = salarySlipAmount(settle);
+    const bal = settle.balance ?? 0;
+    const after = Math.round((bal + slip) * 100) / 100;
+    const lines = [
+      `*IBCAB — Salary slip*`,
+      `Driver: ${driver.name}`,
+      `Month: ${monthLabel(salaryForMonth)}`,
+      `Date: ${date}`,
+      ``,
+      `Gross: ${inr(settle.gross)}`,
+    ];
+    if (leaveN > 0) lines.push(`Leave days: ${leaveN}`);
+    if (settle.bonus > 0) lines.push(`Bonus: +${inr(settle.bonus)}`);
+    if (settle.rent > 0) {
+      lines.push(
+        settle.rentFleetName
+          ? `Tempo rent (${settle.rentFleetName}): −${inr(settle.rent)}`
+          : `Tempo rent: −${inr(settle.rent)}`,
+      );
+    }
+    if (settle.deduction > 0) lines.push(`Deduction: −${inr(settle.deduction)}`);
+    lines.push(`*Salary slip amount: ${inr(slip)}*`);
+    lines.push(``);
+    lines.push(
+      bal < 0
+        ? `Earlier balance (advance): −${inr(Math.abs(bal))}`
+        : `Earlier balance: ${inr(bal)}`,
+    );
+    if (after >= 0) {
+      lines.push(`*After slip — company owes: ${inr(after)}*`);
+    } else {
+      lines.push(`*After slip — still over-advanced: ${inr(Math.abs(after))}*`);
+    }
+    lines.push(``);
+    lines.push(`_This is a salary slip (account only). Cash will be paid later as advance._`);
+    return lines.join("\n");
+  }
+
+  function postSalarySlipAndWa() {
+    if (!driver) {
+      toast.error("Select a driver.");
+      return;
+    }
+    if (!settle) return;
+    const slip = salarySlipAmount(settle);
+    if (!(slip > 0)) {
+      toast.error("Salary slip amount is zero (check leave / base salary).");
+      return;
+    }
+    const bal = settle.balance ?? 0;
+    const after = Math.round((bal + slip) * 100) / 100;
+    const text = salarySlipWhatsAppText();
+    const rec = recordPayout({
+      driverId: driver.id,
+      kind: "salary",
+      amount: slip,
+      date,
+      mode: "cash",
+      bankAccountId: bankId || defaultBankId(),
+      upiVpa: "",
+      note:
+        note ||
+        `Salary slip ${monthLabel(salaryForMonth)} · leave ${leaveN} · after bal ${after}`,
+      status: "paid",
+    });
+    if (!rec.ok) {
+      toast.error(rec.error);
+      return;
+    }
+    openWhatsApp(driver.mobile || "", text);
+    toast.success(
+      after >= 0
+        ? `Slip posted · company owes ₹${Math.round(after)} · WhatsApp opened`
+        : `Slip posted · still over-advanced ₹${Math.round(Math.abs(after))} · WhatsApp opened`,
+    );
+    onOpenChange(false);
+  }
+
+  /** Share slip text on WhatsApp without posting (preview). */
+  function shareSalarySlipWaOnly() {
+    if (!driver || !settle) {
+      toast.error("Select a driver.");
+      return;
+    }
+    const slip = salarySlipAmount(settle);
+    if (!(slip > 0)) {
+      toast.error("Salary slip amount is zero.");
+      return;
+    }
+    openWhatsApp(driver.mobile || "", salarySlipWhatsAppText());
+    toast.message("WhatsApp opened with salary slip text");
+  }
+
   const vpa = useMemo(() => {
     const p = parseUpiPayload(upi);
     return p?.vpa || (isValidVpa(upi) ? normalizeVpa(upi) : "");
@@ -600,9 +696,17 @@ export function PaySheet({
             </div>
 
             {kind === "salary" ? (
-              <Button type="button" className="w-full" onClick={postSalarySlip}>
-                Post salary slip
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button type="button" className="w-full" onClick={postSalarySlip}>
+                  Post salary slip
+                </Button>
+                <Button type="button" className="w-full" variant="outline" onClick={postSalarySlipAndWa}>
+                  <MessageCircle className="size-4" /> Post + WhatsApp
+                </Button>
+                <Button type="button" className="w-full" variant="ghost" onClick={shareSalarySlipWaOnly}>
+                  Share text only (no post)
+                </Button>
+              </div>
             ) : (
               <Button type="button" className="w-full" onClick={goConfirm}>
                 Continue
