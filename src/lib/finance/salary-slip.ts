@@ -13,10 +13,8 @@ export type SalarySlipData = {
   bonus: number;
   rent: number;
   deduction: number;
-  /** Advances / earlier balance before this slip (negative = over-advanced). */
   balanceBefore: number;
   slipAmount: number;
-  /** Running balance after including this slip. */
   balanceAfter: number;
   note?: string;
 };
@@ -33,7 +31,6 @@ export function buildSalarySlipData(input: {
   bonus?: number;
   deduction?: number;
   rentOffDays?: number;
-  /** When viewing an existing salary payout, pass its amount; otherwise computed. */
   slipAmountOverride?: number;
 }): SalarySlipData {
   const settle = salarySettlement({
@@ -50,8 +47,6 @@ export function buildSalarySlipData(input: {
     input.slipAmountOverride != null && input.slipAmountOverride > 0
       ? input.slipAmountOverride
       : Math.round((settle.gross + settle.bonus - settle.rent - settle.deduction) * 100) / 100;
-  // settle.balance already includes paid salary slips; if this slip is already in payouts,
-  // balanceAfter = settle.balance. If not yet posted, balanceAfter = settle.balance + slip.
   const alreadyPosted = input.payouts.some(
     (p) =>
       p.driverId === input.driver.id &&
@@ -95,11 +90,11 @@ export function salarySlipWhatsAppText(d: SalarySlipData): string {
     `Total leave: ${d.leaveDays} day(s)`,
   ];
   if (d.bonus > 0) lines.push(`Bonus: +${inr(d.bonus)}`);
-  if (d.rent > 0) lines.push(`Tempo rent: −${inr(d.rent)}`);
-  if (d.deduction > 0) lines.push(`Deduction: −${inr(d.deduction)}`);
+  if (d.rent > 0) lines.push(`Tempo rent: -${inr(d.rent)}`);
+  if (d.deduction > 0) lines.push(`Deduction: -${inr(d.deduction)}`);
   lines.push(
     d.balanceBefore < 0
-      ? `Advance / earlier balance: −${inr(Math.abs(d.balanceBefore))}`
+      ? `Advance / earlier balance: -${inr(Math.abs(d.balanceBefore))}`
       : `Earlier balance: ${inr(d.balanceBefore)}`,
   );
   lines.push(`*Salary slip: ${inr(d.slipAmount)}*`);
@@ -128,14 +123,14 @@ export function salarySlipHtml(d: SalarySlipData): string {
 
   const balBefore =
     d.balanceBefore < 0
-      ? `− ${inr(Math.abs(d.balanceBefore))} (advance)`
+      ? `- ${inr(Math.abs(d.balanceBefore))} (advance)`
       : inr(d.balanceBefore);
   const netLine =
     d.balanceAfter >= 0
       ? `Company owes ${inr(d.balanceAfter)}`
       : `Over-advanced ${inr(Math.abs(d.balanceAfter))}`;
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Salary slip — ${escapeHtml(d.driverName)}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Salary slip - ${escapeHtml(d.driverName)}</title>
 <style>
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:24px;color:#111;background:#f5f5f5}
   .sheet{max-width:420px;margin:0 auto;background:#fff;border-radius:12px;padding:28px 24px;box-shadow:0 2px 12px rgba(0,0,0,.08)}
@@ -155,10 +150,10 @@ export function salarySlipHtml(d: SalarySlipData): string {
   <p style="margin:0 0 16px;font-size:12px;color:#666">Date: ${escapeHtml(d.date)}</p>
   <table>
     ${row("Gross salary", inr(d.gross))}
-    ${row("Total leave", `${d.leaveDays} day(s)`)}
-    ${d.bonus > 0 ? row("Bonus", `+ ${inr(d.bonus)}`) : ""}
-    ${d.rent > 0 ? row("Tempo rent", `− ${inr(d.rent)}`) : ""}
-    ${d.deduction > 0 ? row("Deduction", `− ${inr(d.deduction)}`) : ""}
+    ${row("Total leave", String(d.leaveDays) + " day(s)")}
+    ${d.bonus > 0 ? row("Bonus", "+ " + inr(d.bonus)) : ""}
+    ${d.rent > 0 ? row("Tempo rent", "- " + inr(d.rent)) : ""}
+    ${d.deduction > 0 ? row("Deduction", "- " + inr(d.deduction)) : ""}
     ${row("Advance / earlier balance", balBefore)}
     ${row("Salary slip amount", inr(d.slipAmount), true)}
     ${row("Net payable", netLine, true)}
@@ -169,12 +164,11 @@ export function salarySlipHtml(d: SalarySlipData): string {
 </body></html>`;
 }
 
-/** Open print dialog (user can Save as PDF). */
 export function printSalarySlip(d: SalarySlipData) {
   const html = salarySlipHtml(d);
   const w = window.open("", "_blank", "noopener,noreferrer,width=480,height=720");
   if (!w) {
-    downloadBlob(new Blob([html], { type: "text/html" }), `salary-slip-${d.driverName.replace(/\s+/g, "-")}.html`);
+    downloadBlob(new Blob([html], { type: "text/html" }), "salary-slip-" + d.driverName.replace(/\s+/g, "-") + ".html");
     return;
   }
   w.document.open();
@@ -182,37 +176,36 @@ export function printSalarySlip(d: SalarySlipData) {
   w.document.close();
 }
 
-/** Minimal single-page text PDF (no external deps). */
 export function downloadSalarySlipPdf(d: SalarySlipData) {
   const lines: string[] = [
     d.company,
-    `Salary slip — ${d.monthLabel}`,
+    "Salary slip - " + d.monthLabel,
     "",
-    `Driver: ${d.driverName}`,
-    `Date: ${d.date}`,
+    "Driver: " + d.driverName,
+    "Date: " + d.date,
     "",
-    `Gross salary: ${inr(d.gross)}`,
-    `Total leave: ${d.leaveDays} day(s)`,
+    "Gross salary: " + inr(d.gross),
+    "Total leave: " + d.leaveDays + " day(s)",
   ];
-  if (d.bonus > 0) lines.push(`Bonus: +${inr(d.bonus)}`);
-  if (d.rent > 0) lines.push(`Tempo rent: -${inr(d.rent)}`);
-  if (d.deduction > 0) lines.push(`Deduction: -${inr(d.deduction)}`);
+  if (d.bonus > 0) lines.push("Bonus: +" + inr(d.bonus));
+  if (d.rent > 0) lines.push("Tempo rent: -" + inr(d.rent));
+  if (d.deduction > 0) lines.push("Deduction: -" + inr(d.deduction));
   lines.push(
     d.balanceBefore < 0
-      ? `Advance / earlier balance: -${inr(Math.abs(d.balanceBefore))}`
-      : `Earlier balance: ${inr(d.balanceBefore)}`,
+      ? "Advance / earlier balance: -" + inr(Math.abs(d.balanceBefore))
+      : "Earlier balance: " + inr(d.balanceBefore),
   );
-  lines.push(`Salary slip amount: ${inr(d.slipAmount)}`);
+  lines.push("Salary slip amount: " + inr(d.slipAmount));
   lines.push(
     d.balanceAfter >= 0
-      ? `Net payable (company owes): ${inr(d.balanceAfter)}`
-      : `Still over-advanced: ${inr(Math.abs(d.balanceAfter))}`,
+      ? "Net payable (company owes): " + inr(d.balanceAfter)
+      : "Still over-advanced: " + inr(Math.abs(d.balanceAfter)),
   );
   lines.push("");
   lines.push("Account slip only. Cash paid later as advance.");
 
   const pdf = buildSimplePdf(lines);
-  const name = `salary-slip-${d.driverName.replace(/\s+/g, "-")}-${d.month}.pdf`;
+  const name = "salary-slip-" + d.driverName.replace(/\s+/g, "-") + "-" + d.month + ".pdf";
   downloadBlob(new Blob([pdf], { type: "application/pdf" }), name);
 }
 
@@ -232,14 +225,13 @@ export function shareSalarySlipWhatsApp(d: SalarySlipData) {
   openWhatsApp(d.mobile || "", salarySlipWhatsAppText(d));
 }
 
-/** Very small PDF writer for Latin text lines. */
 function buildSimplePdf(lines: string[]): Uint8Array {
   const esc = (s: string) =>
     s.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
   const contentLines: string[] = ["BT", "/F1 11 Tf", "50 780 Td", "14 TL"];
   lines.forEach((line, i) => {
-    if (i === 0) contentLines.push(`(${esc(line)}) Tj`);
-    else contentLines.push(`T* (${esc(line)}) Tj`);
+    if (i === 0) contentLines.push("(" + esc(line) + ") Tj");
+    else contentLines.push("T* (" + esc(line) + ") Tj");
   });
   contentLines.push("ET");
   const stream = contentLines.join("\n");
@@ -249,7 +241,7 @@ function buildSimplePdf(lines: string[]): Uint8Array {
   objects.push(
     "3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>endobj\n",
   );
-  objects.push(`4 0 obj<< /Length ${stream.length} >>stream\n${stream}\nendstream\nendobj\n`);
+  objects.push("4 0 obj<< /Length " + stream.length + " >>stream\n" + stream + "\nendstream\nendobj\n");
   objects.push("5 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj\n");
 
   let pdf = "%PDF-1.4\n";
@@ -259,16 +251,15 @@ function buildSimplePdf(lines: string[]): Uint8Array {
     pdf += obj;
   }
   const xrefPos = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "xref\n0 " + (objects.length + 1) + "\n";
   pdf += "0000000000 65535 f \n";
   for (let i = 1; i < offsets.length; i++) {
-    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+    pdf += String(offsets[i]).padStart(10, "0") + " 00000 n \n";
   }
-  pdf += `trailer<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
+  pdf += "trailer<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\nstartxref\n" + xrefPos + "\n%%EOF";
   return new TextEncoder().encode(pdf);
 }
 
-/** Recompute slip view from an existing salary payout row. */
 export function slipFromSalaryPayout(
   driver: Driver,
   payout: Payout,
