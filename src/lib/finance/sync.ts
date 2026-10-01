@@ -94,10 +94,8 @@ function resolveCurrentBankId(): string {
         b.id === WSB_CURRENT_BANK.id ||
         (/warana|warna/i.test(b.name) && /current|0498/i.test(b.name)),
     )?.id ||
-    s.banks.find((b) => /warana|warna/i.test(b.name) && !/cc/i.test(b.name))?.id;
-  if (found) return found;
-  s.upsertBank(WSB_CURRENT_BANK);
-  return WSB_CURRENT_BANK.id;
+    s.banks.find((b) => /warana|warna/i.test(b.name) && /current/i.test(b.name))?.id;
+  return found || WSB_CURRENT_BANK.id;
 }
 
 const STMT_DELETED_KEY = "finance_wsb_stmt_deleted_v1";
@@ -237,25 +235,29 @@ function snapshotFromStore(): FinanceSnapshot {
     rentWaivers: s.rentWaivers,
     payouts: s.payouts,
     expenses: s.expenses,
+    deletedIds: [...readDeletedIds()],
   };
 }
 
 function applySnapshot(data: FinanceSnapshot) {
+  const gone = readDeletedIds();
+  const keep = <T extends { id: string }>(rows: T[] | undefined) =>
+    (rows ?? []).filter((r) => !gone.has(r.id));
   useFinance.setState({
     drivers: data.drivers,
     fleets: data.fleets,
     loans: data.loans,
-    loanPayments: data.loanPayments,
+    loanPayments: keep(data.loanPayments),
     banks: data.banks,
-    bankTransfers: data.bankTransfers ?? [],
+    bankTransfers: keep(data.bankTransfers ?? []),
     vendors: data.vendors,
     customers: data.customers,
-    receipts: data.receipts,
-    rentPayments: data.rentPayments,
+    receipts: keep(data.receipts),
+    rentPayments: keep(data.rentPayments),
     attendances: data.attendances,
     rentWaivers: data.rentWaivers,
-    payouts: data.payouts,
-    expenses: data.expenses,
+    payouts: keep(data.payouts),
+    expenses: keep(data.expenses),
   });
 }
 
@@ -271,7 +273,6 @@ export async function hydrateFinanceFromDb(): Promise<{
   if (hydrating) return { ok: true, source: "local" };
   hydrating = true;
   try {
-    // Cloud-only: clear any old phone cache so it cannot override Neon
     try {
       if (typeof localStorage !== "undefined") {
         localStorage.removeItem("satelkar-finance-v5");
@@ -293,7 +294,6 @@ export async function hydrateFinanceFromDb(): Promise<{
       if (seeded) void flushFinanceSave();
       return { ok: true, source: "neon" };
     }
-    // Neon wins 100% — no merge from phone memory
     applySnapshot({
       ...res.data,
       bankTransfers: res.data.bankTransfers ?? [],
