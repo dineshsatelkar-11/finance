@@ -138,7 +138,8 @@ export function salarySlipHtml(d: SalarySlipData): string {
       : "Over-advanced " + inr(Math.abs(d.balanceAfter));
 
   return (
-    "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><title>Salary slip - " +
+    "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/>" +
+    "<title>Salary slip - " +
     escapeHtml(d.driverName) +
     "</title><style>" +
     "body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:24px;color:#111;background:#f5f5f5}" +
@@ -167,20 +168,22 @@ export function salarySlipHtml(d: SalarySlipData): string {
     row("Salary slip amount", inr(d.slipAmount), true) +
     row("Net payable", netLine, true) +
     "</table><p class=\"foot\">This is an account slip only.<br/>Cash is paid later as advance (~10th).</p></div>" +
-    "<script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>"
+    "<script>window.onload=function(){setTimeout(function(){try{window.print()}catch(e){}},400)}<\/script></body></html>"
   );
 }
 
+/** Open slip in new tab via blob URL (avoids blank popup from document.write + noopener). */
 export function printSalarySlip(d: SalarySlipData) {
   const html = salarySlipHtml(d);
-  const w = window.open("", "_blank", "noopener,noreferrer,width=480,height=720");
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, "_blank");
   if (!w) {
-    downloadBlob(new Blob([html], { type: "text/html" }), "salary-slip-" + d.driverName.replace(/\s+/g, "-") + ".html");
-    return;
+    // Popup blocked — fall back to download
+    downloadBlob(blob, "salary-slip-" + d.driverName.replace(/\s+/g, "-") + ".html");
   }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+  // Revoke after the new tab has had time to load
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export function downloadSalarySlipPdf(d: SalarySlipData) {
