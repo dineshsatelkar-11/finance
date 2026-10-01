@@ -14,9 +14,7 @@ import {
   salarySettlement,
   todayISO,
 } from "@/lib/finance/format";
-import {
-  buildSalarySlipData,
-} from "@/lib/finance/salary-slip";
+import { buildSalarySlipData } from "@/lib/finance/salary-slip";
 import { flushFinanceSave } from "@/lib/finance/sync";
 import type { PayMode, PayoutKind } from "@/lib/finance/types";
 
@@ -118,16 +116,19 @@ export function PaySheet({
     const slip = salarySlipAmount(settle);
     setAmount(String(Math.max(0, slip)));
     const after = Math.round((balanceTillToday + slip) * 100) / 100;
-    const parts = [
-      `Salary slip ${salaryForMonth}`,
-      `leave ${leaveN}`,
-      rentOffN > 0 ? `rentOff ${rentOffN}` : null,
-      bonusN > 0 ? `bonus ${bonusN}` : null,
-      settle.rent > 0 ? `rent −${settle.rent}` : null,
-      `slip ${slip}`,
-      `after bal ${after}`,
-    ].filter(Boolean);
-    setNote(parts.join(" · "));
+    setNote(
+      [
+        `Salary slip ${salaryForMonth}`,
+        `leave ${leaveN}`,
+        rentOffN > 0 ? `rentOff ${rentOffN}` : null,
+        bonusN > 0 ? `bonus ${bonusN}` : null,
+        settle.rent > 0 ? `rent −${settle.rent}` : null,
+        `slip ${slip}`,
+        `after bal ${after}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    );
   }
 
   async function postSalarySlip() {
@@ -180,7 +181,6 @@ export function PaySheet({
         return;
       }
       setAttendance(driver.id, salaryForMonth, leaveN);
-      // Close immediately — do not stay on this page
       onOpenChange(false);
       void flushFinanceSave();
       toast.success(
@@ -232,7 +232,6 @@ export function PaySheet({
       void flushFinanceSave();
     }
     toast.success("Marked paid");
-    // Always close popup after Mark paid
     onOpenChange(false);
   }
 
@@ -247,7 +246,11 @@ export function PaySheet({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title={kind === "salary" ? "Salary slip" : step === "confirm" ? "Confirm payment" : "Pay driver"}>
+      <DialogContent
+        title={
+          kind === "salary" ? "Salary slip" : step === "confirm" ? "Confirm payment" : "Pay driver"
+        }
+      >
         {step === "form" ? (
           <div className="space-y-3">
             <div>
@@ -257,11 +260,13 @@ export function PaySheet({
                   <SelectValue placeholder="Select driver" />
                 </SelectTrigger>
                 <SelectContent>
-                  {drivers.filter((d) => d.active).map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
+                  {drivers
+                    .filter((d) => d.active)
+                    .map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -360,12 +365,14 @@ export function PaySheet({
                     <span className="tabular-nums">{inr(salaryGross)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted">Balance (till today)</span>
+                    <span className="text-muted">Advance before salary</span>
                     <span className="tabular-nums">{inr(balanceTillToday)}</span>
                   </div>
                   {tempoRent > 0 ? (
                     <div className="flex justify-between">
-                      <span className="text-muted">Tempo rent{rentFleetName ? ` (${rentFleetName})` : ""}</span>
+                      <span className="text-muted">
+                        Tempo rent{rentFleetName ? ` (${rentFleetName})` : ""}
+                      </span>
                       <span className="tabular-nums">− {inr(tempoRent)}</span>
                     </div>
                   ) : null}
@@ -376,7 +383,7 @@ export function PaySheet({
                     </span>
                   </div>
                   <p className="text-[11px] text-muted">
-                    Slip adds to balance. Current {inr(balanceTillToday)} → after{" "}
+                    Slip adds to balance. Advance before {inr(balanceTillToday)} → after{" "}
                     {inr(balanceTillToday + (settle ? salarySlipAmount(settle) : 0))}
                   </p>
                 </div>
@@ -388,10 +395,20 @@ export function PaySheet({
                   <Label>Note</Label>
                   <Input value={note} onChange={(e) => setNote(e.target.value)} />
                 </div>
-                <Button type="button" className="w-full" disabled={posting} onClick={() => void postSalarySlip()}>
+                <Button
+                  type="button"
+                  className="w-full"
+                  disabled={posting}
+                  onClick={() => void postSalarySlip()}
+                >
                   {posting ? "Posting…" : "Post salary slip"}
                 </Button>
-                <Button type="button" variant="ghost" className="w-full" onClick={() => onOpenChange(false)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => onOpenChange(false)}
+                >
                   Close
                 </Button>
               </div>
@@ -416,7 +433,12 @@ export function PaySheet({
                 <Button type="button" className="w-full" onClick={goConfirm}>
                   Continue
                 </Button>
-                <Button type="button" variant="ghost" className="w-full" onClick={() => onOpenChange(false)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => onOpenChange(false)}
+                >
                   Close
                 </Button>
               </div>
