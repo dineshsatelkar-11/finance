@@ -15,6 +15,7 @@ export const Route = createFileRoute("/manage-drivers")({ component: ManageDrive
 
 function ManageDriversPage() {
   const drivers = useFinance((s) => s.drivers);
+  const fleets = useFinance((s) => s.fleets);
   const month = useFinance((s) => s.month);
   const attendances = useFinance((s) => s.attendances);
   const setAttendance = useFinance((s) => s.setAttendance);
@@ -47,6 +48,7 @@ function ManageDriversPage() {
           const att = attendances.find((a) => a.driverId === d.id && a.month === month);
           const leaves = att?.leaveDays || 0;
           const pay = suggestedSalary(d, leaves);
+          const fleet = d.fleetId ? fleets.find((f) => f.id === d.fleetId) : null;
           return (
             <Card key={d.id} className="p-4">
               <div className="flex items-start gap-3">
@@ -58,6 +60,14 @@ function ManageDriversPage() {
                     <h2 className="font-medium">{d.name}</h2>
                     <Badge tone="muted">{d.kind === "full" ? "Full-time" : "Part-time"}</Badge>
                     {d.upiVpa ? <Badge tone="ok">UPI on file</Badge> : null}
+                    {fleet ? (
+                      <Badge tone="accent">
+                        {fleet.name}
+                        {fleet.chargesRent !== false && (fleet.monthlyRent || 0) > 0
+                          ? ` · ${inr(fleet.monthlyRent)}`
+                          : " · no rent"}
+                      </Badge>
+                    ) : null}
                     {!d.active ? <Badge tone="danger">Inactive</Badge> : null}
                   </div>
                   <p className="mt-1 text-[13px] text-muted">
