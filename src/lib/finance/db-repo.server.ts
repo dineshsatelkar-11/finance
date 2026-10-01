@@ -17,273 +17,190 @@ import type {
   Vendor,
 } from "./types";
 
-function str(v: unknown) {
-  return v == null ? "" : String(v);
-}
-function num(v: unknown) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-function bool(v: unknown) {
-  return v === true || v === "t" || v === "true" || v === 1 || v === "1";
-}
-function isoOrNull(v: unknown): string | null {
-  if (v == null || v === "") return null;
-  try {
-    return new Date(String(v)).toISOString();
-  } catch {
-    return null;
-  }
-}
-function dateStr(v: unknown): string {
-  if (v == null) return "";
-  const s = String(v);
-  return s.length >= 10 ? s.slice(0, 10) : s;
+function mapDriver(r: Record<string, unknown>): Driver {
+  return {
+    id: String(r.id),
+    name: String(r.name ?? ""),
+    mobile: String(r.mobile ?? ""),
+    upiVpa: String(r.upi_vpa ?? ""),
+    upiPayeeName: String(r.upi_payee_name ?? ""),
+    kind: (r.kind as Driver["kind"]) || "salary",
+    baseSalary: Number(r.base_salary ?? 0),
+    dailyRate: Number(r.daily_rate ?? 0),
+    opening: Number(r.opening ?? 0),
+    active: Boolean(r.active ?? true),
+    note: String(r.note ?? ""),
+  };
 }
 
 export async function loadFinanceSnapshot(): Promise<FinanceSnapshot> {
   const sql = await getSql();
   const [
     banks,
+    drivers,
     fleets,
     loans,
-    drivers,
+    loanPayments,
     vendors,
     customers,
-    payouts,
-    expenses,
     receipts,
     rentPayments,
     attendances,
     rentWaivers,
-    loanPayments,
+    payouts,
+    expenses,
   ] = await Promise.all([
-    sql.query(`select id, name, is_default, opening from banks order by name`),
-    sql.query(
-      `select id, name, reg_no, kind, monthly_rent, active, loan_id, note from fleets order by name`,
-    ),
-    sql.query(
-      `select id, name, bank, account_no, ifsc, principal, emi_amount, emi_day, total_emis,
-              start_date, end_date, interest_rate, outstanding, pending_emis, status, fleet_id, note
-       from loans order by name`,
-    ),
-    sql.query(
-      `select id, name, mobile, kind, base_salary, daily_rate, opening_balance, active, upi_vpa, upi_payee_name,
-              upi_updated_at, fleet_id, note from drivers order by name`,
-    ),
-    sql.query(`select id, name, upi_vpa, upi_payee_name from vendors order by name`),
-    sql.query(`select id, name, mobile, note from customers order by name`),
-    sql.query(
-      `select id, driver_id, kind, amount, date, mode, status, bank_account_id, upi_vpa, note, created_at
-       from payouts order by date desc, created_at desc`,
-    ),
-    sql.query(
-      `select id, category, vendor, amount, date, mode, status, bank_account_id, upi_vpa, fleet_id, note, created_at
-       from expenses order by date desc, created_at desc`,
-    ),
-    sql.query(
-      `select id, customer_id, customer_name, amount, date, mode, status, bank_account_id, fleet_id, note, created_at
-       from receipts order by date desc, created_at desc`,
-    ),
-    sql.query(
-      `select id, fleet_id, driver_id, amount, date, for_month, mode, status, note, created_at
-       from rent_payments order by date desc, created_at desc`,
-    ),
-    sql.query(`select id, driver_id, month, leave_days, note from attendances`),
-    sql.query(`select id, fleet_id, month, breakdown_days, amount, note from rent_waivers`),
-    sql.query(
-      `select id, loan_id, kind, amount, date, mode, status, bank_account_id, note, created_at
-       from loan_payments order by date desc, created_at desc`,
-    ),
+    sql.query(`select * from banks order by name`),
+    sql.query(`select * from drivers order by name`),
+    sql.query(`select * from fleets order by name`),
+    sql.query(`select * from loans order by bank`),
+    sql.query(`select * from loan_payments order by date desc, created_at desc`),
+    sql.query(`select * from vendors order by name`),
+    sql.query(`select * from customers order by name`),
+    sql.query(`select * from receipts order by date desc, created_at desc`),
+    sql.query(`select * from rent_payments order by date desc, created_at desc`),
+    sql.query(`select * from attendances`),
+    sql.query(`select * from rent_waivers`),
+    sql.query(`select * from payouts order by date desc, created_at desc`),
+    sql.query(`select * from expenses order by date desc, created_at desc`),
   ]);
 
   let bankTransfers: BankTransfer[] = [];
   try {
-    const bankTransferRows = await sql.query(
-      `select id, from_bank_id, to_bank_id, amount, date, note, created_at from bank_transfers order by date desc`,
-    );
-    bankTransfers = bankTransferRows.map((r) => ({
-      id: str(r.id),
-      fromBankId: str(r.from_bank_id),
-      toBankId: str(r.to_bank_id),
-      amount: num(r.amount),
-      date: dateStr(r.date),
-      note: str(r.note),
-      createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
+    const rows = await sql.query(`select * from bank_transfers order by date desc, created_at desc`);
+    bankTransfers = rows.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      fromBankId: String(r.from_bank_id),
+      toBankId: String(r.to_bank_id),
+      amount: Number(r.amount),
+      date: String(r.date),
+      note: String(r.note ?? ""),
+      createdAt: String(r.created_at ?? ""),
     }));
   } catch {
-    bankTransfers = [];
+    /* older DB */
   }
 
   return {
-    banks: banks.map(
-      (r): BankAccount => ({
-        id: str(r.id),
-        name: str(r.name),
-        isDefault: bool(r.is_default),
-        opening: num(r.opening),
-      }),
-    ),
-    fleets: fleets.map(
-      (r): Fleet => ({
-        id: str(r.id),
-        name: str(r.name),
-        regNo: str(r.reg_no),
-        kind: str(r.kind) as Fleet["kind"],
-        monthlyRent: num(r.monthly_rent),
-        active: bool(r.active),
-        loanId: r.loan_id ? str(r.loan_id) : null,
-        note: str(r.note),
-      }),
-    ),
-    loans: loans.map(
-      (r): Loan => ({
-        id: str(r.id),
-        name: str(r.name),
-        bank: str(r.bank),
-        accountNo: str(r.account_no),
-        ifsc: str(r.ifsc),
-        principal: num(r.principal),
-        emiAmount: num(r.emi_amount),
-        emiDay: num(r.emi_day),
-        totalEmis: num(r.total_emis),
-        startDate: dateStr(r.start_date),
-        endDate: dateStr(r.end_date),
-        interestRate: num(r.interest_rate),
-        outstanding: num(r.outstanding),
-        pendingEmis: num(r.pending_emis),
-        status: str(r.status) as Loan["status"],
-        fleetId: r.fleet_id ? str(r.fleet_id) : null,
-        note: str(r.note),
-      }),
-    ),
-    drivers: drivers.map(
-      (r): Driver => ({
-        id: str(r.id),
-        name: str(r.name),
-        mobile: str(r.mobile),
-        kind: str(r.kind) as Driver["kind"],
-        baseSalary: num(r.base_salary),
-        dailyRate: num(r.daily_rate),
-        openingBalance: num(r.opening_balance),
-        active: bool(r.active),
-        upiVpa: str(r.upi_vpa),
-        upiPayeeName: str(r.upi_payee_name),
-        upiUpdatedAt: isoOrNull(r.upi_updated_at),
-        fleetId: r.fleet_id ? str(r.fleet_id) : null,
-        note: str(r.note),
-      }),
-    ),
-    vendors: vendors.map(
-      (r): Vendor => ({
-        id: str(r.id),
-        name: str(r.name),
-        upiVpa: str(r.upi_vpa),
-        upiPayeeName: str(r.upi_payee_name),
-      }),
-    ),
-    customers: customers.map(
-      (r): Customer => ({
-        id: str(r.id),
-        name: str(r.name),
-        mobile: str(r.mobile),
-        note: str(r.note),
-      }),
-    ),
-    payouts: payouts.map(
-      (r): Payout => ({
-        id: str(r.id),
-        driverId: str(r.driver_id),
-        kind: str(r.kind) as Payout["kind"],
-        amount: num(r.amount),
-        date: dateStr(r.date),
-        mode: str(r.mode) as Payout["mode"],
-        status: str(r.status) as Payout["status"],
-        bankAccountId: str(r.bank_account_id),
-        upiVpa: str(r.upi_vpa),
-        note: str(r.note),
-        createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
-      }),
-    ),
-    expenses: expenses.map(
-      (r): Expense => ({
-        id: str(r.id),
-        category: str(r.category),
-        vendor: str(r.vendor),
-        amount: num(r.amount),
-        date: dateStr(r.date),
-        mode: str(r.mode) as Expense["mode"],
-        status: str(r.status) as Expense["status"],
-        bankAccountId: str(r.bank_account_id),
-        upiVpa: str(r.upi_vpa),
-        fleetId: r.fleet_id ? str(r.fleet_id) : null,
-        note: str(r.note),
-        createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
-      }),
-    ),
-    receipts: receipts.map(
-      (r): Receipt => ({
-        id: str(r.id),
-        customerId: str(r.customer_id),
-        customerName: str(r.customer_name),
-        amount: num(r.amount),
-        date: dateStr(r.date),
-        mode: str(r.mode) as Receipt["mode"],
-        status: str(r.status) as Receipt["status"],
-        bankAccountId: str(r.bank_account_id),
-        fleetId: r.fleet_id ? str(r.fleet_id) : null,
-        note: str(r.note),
-        createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
-      }),
-    ),
-    rentPayments: rentPayments.map(
-      (r): RentPayment => ({
-        id: str(r.id),
-        fleetId: str(r.fleet_id),
-        driverId: str(r.driver_id),
-        amount: num(r.amount),
-        date: dateStr(r.date),
-        forMonth: str(r.for_month),
-        mode: str(r.mode) as RentPayment["mode"],
-        status: str(r.status) as RentPayment["status"],
-        note: str(r.note),
-        createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
-      }),
-    ),
-    attendances: attendances.map(
-      (r): Attendance => ({
-        id: str(r.id),
-        driverId: str(r.driver_id),
-        month: str(r.month),
-        leaveDays: num(r.leave_days),
-        note: str(r.note),
-      }),
-    ),
-    rentWaivers: rentWaivers.map(
-      (r): RentWaiver => ({
-        id: str(r.id),
-        fleetId: str(r.fleet_id),
-        month: str(r.month),
-        breakdownDays: num(r.breakdown_days),
-        amount: num(r.amount),
-        note: str(r.note),
-      }),
-    ),
-    loanPayments: loanPayments.map(
-      (r): LoanPayment => ({
-        id: str(r.id),
-        loanId: str(r.loan_id),
-        kind: str(r.kind) as LoanPayment["kind"],
-        amount: num(r.amount),
-        date: dateStr(r.date),
-        mode: str(r.mode) as LoanPayment["mode"],
-        status: str(r.status) as LoanPayment["status"],
-        bankAccountId: str(r.bank_account_id),
-        note: str(r.note),
-        createdAt: isoOrNull(r.created_at) || new Date().toISOString(),
-      }),
-    ),
+    banks: banks.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      name: String(r.name),
+      isDefault: Boolean(r.is_default),
+      opening: Number(r.opening ?? 0),
+    })),
+    drivers: drivers.map((r: Record<string, unknown>) => mapDriver(r)),
+    fleets: fleets.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      name: String(r.name),
+      regNo: String(r.reg_no ?? ""),
+      kind: (r.kind as Fleet["kind"]) || "owned",
+      monthlyRent: Number(r.monthly_rent ?? 0),
+      active: Boolean(r.active ?? true),
+      loanId: String(r.loan_id ?? ""),
+      note: String(r.note ?? ""),
+    })),
+    loans: loans.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      bank: String(r.bank ?? ""),
+      accountNo: String(r.account_no ?? ""),
+      emi: Number(r.emi ?? 0),
+      emiDay: Number(r.emi_day ?? 1),
+      opening: Number(r.opening ?? 0),
+      fleetId: String(r.fleet_id ?? ""),
+      note: String(r.note ?? ""),
+    })),
+    loanPayments: loanPayments.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      loanId: String(r.loan_id),
+      kind: (r.kind as LoanPayment["kind"]) || "emi",
+      amount: Number(r.amount),
+      date: String(r.date),
+      mode: (r.mode as LoanPayment["mode"]) || "bank",
+      status: (r.status as LoanPayment["status"]) || "paid",
+      bankAccountId: String(r.bank_account_id ?? ""),
+      note: String(r.note ?? ""),
+      createdAt: String(r.created_at ?? ""),
+    })),
     bankTransfers,
+    vendors: vendors.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      name: String(r.name),
+      upiVpa: String(r.upi_vpa ?? ""),
+      upiPayeeName: String(r.upi_payee_name ?? ""),
+    })),
+    customers: customers.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      name: String(r.name),
+      mobile: String(r.mobile ?? ""),
+      note: String(r.note ?? ""),
+    })),
+    receipts: receipts.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      customerId: String(r.customer_id ?? ""),
+      customerName: String(r.customer_name ?? ""),
+      amount: Number(r.amount),
+      date: String(r.date),
+      mode: (r.mode as Receipt["mode"]) || "cash",
+      status: (r.status as Receipt["status"]) || "paid",
+      bankAccountId: String(r.bank_account_id ?? ""),
+      fleetId: String(r.fleet_id ?? ""),
+      note: String(r.note ?? ""),
+      createdAt: String(r.created_at ?? ""),
+    })),
+    rentPayments: rentPayments.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      fleetId: String(r.fleet_id),
+      driverId: String(r.driver_id ?? ""),
+      amount: Number(r.amount),
+      date: String(r.date),
+      forMonth: String(r.for_month ?? ""),
+      mode: (r.mode as RentPayment["mode"]) || "cash",
+      status: (r.status as RentPayment["status"]) || "paid",
+      note: String(r.note ?? ""),
+      createdAt: String(r.created_at ?? ""),
+    })),
+    attendances: attendances.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      driverId: String(r.driver_id),
+      month: String(r.month),
+      leaveDays: Number(r.leave_days ?? 0),
+      note: String(r.note ?? ""),
+    })),
+    rentWaivers: rentWaivers.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      fleetId: String(r.fleet_id),
+      month: String(r.month),
+      breakdownDays: Number(r.breakdown_days ?? 0),
+      amount: Number(r.amount ?? 0),
+      note: String(r.note ?? ""),
+    })),
+    payouts: payouts.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      driverId: String(r.driver_id),
+      kind: (r.kind as Payout["kind"]) || "advance",
+      amount: Number(r.amount),
+      date: String(r.date),
+      mode: (r.mode as Payout["mode"]) || "cash",
+      status: (r.status as Payout["status"]) || "paid",
+      bankAccountId: String(r.bank_account_id ?? ""),
+      upiVpa: String(r.upi_vpa ?? ""),
+      note: String(r.note ?? ""),
+      createdAt: String(r.created_at ?? ""),
+    })),
+    expenses: expenses.map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      category: String(r.category ?? ""),
+      vendor: String(r.vendor ?? ""),
+      amount: Number(r.amount),
+      date: String(r.date),
+      mode: (r.mode as Expense["mode"]) || "cash",
+      status: (r.status as Expense["status"]) || "paid",
+      bankAccountId: String(r.bank_account_id ?? ""),
+      upiVpa: String(r.upi_vpa ?? ""),
+      fleetId: String(r.fleet_id ?? ""),
+      note: String(r.note ?? ""),
+      createdAt: String(r.created_at ?? ""),
+    })),
   };
 }
 
@@ -303,7 +220,7 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
   }
 
   /**
-   * SAFE SAVE — masters UPSERT only; transaction tables full-replace so deletes persist.
+   * SAFE SAVE — masters + transactions UPSERT; intentional deletes via snap.deletedIds only.
    */
   for (const b of snap.banks ?? []) {
     await sql.query(
@@ -332,55 +249,46 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
   }
   for (const l of snap.loans ?? []) {
     await sql.query(
-      `insert into loans (
-        id, name, bank, account_no, ifsc, principal, emi_amount, emi_day, total_emis,
-        start_date, end_date, interest_rate, outstanding, pending_emis, status, fleet_id, note
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      `insert into loans (id, bank, account_no, emi, emi_day, opening, fleet_id, note)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
        on conflict (id) do update set
-         name = excluded.name,
          bank = excluded.bank,
          account_no = excluded.account_no,
-         ifsc = excluded.ifsc,
-         principal = excluded.principal,
-         emi_amount = excluded.emi_amount,
+         emi = excluded.emi,
          emi_day = excluded.emi_day,
-         total_emis = excluded.total_emis,
-         start_date = excluded.start_date,
-         end_date = excluded.end_date,
-         interest_rate = excluded.interest_rate,
-         outstanding = excluded.outstanding,
-         pending_emis = excluded.pending_emis,
-         status = excluded.status,
+         opening = excluded.opening,
          fleet_id = excluded.fleet_id,
          note = excluded.note`,
-      [
-        l.id, l.name, l.bank, l.accountNo, l.ifsc, l.principal, l.emiAmount, l.emiDay, l.totalEmis,
-        l.startDate, l.endDate, l.interestRate, l.outstanding, l.pendingEmis, l.status, l.fleetId, l.note,
-      ],
+      [l.id, l.bank, l.accountNo, l.emi, l.emiDay, l.opening, l.fleetId, l.note],
     );
   }
   for (const d of snap.drivers ?? []) {
     await sql.query(
-      `insert into drivers (
-        id, name, mobile, kind, base_salary, daily_rate, opening_balance, active,
-        upi_vpa, upi_payee_name, upi_updated_at, fleet_id, note
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      `insert into drivers (id, name, mobile, upi_vpa, upi_payee_name, kind, base_salary, daily_rate, opening, active, note)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        on conflict (id) do update set
          name = excluded.name,
          mobile = CASE WHEN excluded.mobile IS NULL OR excluded.mobile = '' THEN drivers.mobile ELSE excluded.mobile END,
+         upi_vpa = CASE WHEN excluded.upi_vpa IS NULL OR excluded.upi_vpa = '' THEN drivers.upi_vpa ELSE excluded.upi_vpa END,
+         upi_payee_name = CASE WHEN excluded.upi_payee_name IS NULL OR excluded.upi_payee_name = '' THEN drivers.upi_payee_name ELSE excluded.upi_payee_name END,
          kind = excluded.kind,
          base_salary = excluded.base_salary,
          daily_rate = excluded.daily_rate,
-         opening_balance = excluded.opening_balance,
+         opening = excluded.opening,
          active = excluded.active,
-         upi_vpa = CASE WHEN excluded.upi_vpa IS NULL OR excluded.upi_vpa = '' THEN drivers.upi_vpa ELSE excluded.upi_vpa END,
-         upi_payee_name = CASE WHEN excluded.upi_payee_name IS NULL OR excluded.upi_payee_name = '' THEN drivers.upi_payee_name ELSE excluded.upi_payee_name END,
-         upi_updated_at = CASE WHEN excluded.upi_vpa IS NULL OR excluded.upi_vpa = '' THEN drivers.upi_updated_at ELSE excluded.upi_updated_at END,
-         fleet_id = excluded.fleet_id,
          note = excluded.note`,
       [
-        d.id, d.name, d.mobile, d.kind, d.baseSalary, d.dailyRate, d.openingBalance ?? 0, d.active,
-        d.upiVpa, d.upiPayeeName, d.upiUpdatedAt, d.fleetId, d.note,
+        d.id,
+        d.name,
+        d.mobile,
+        d.upiVpa,
+        d.upiPayeeName,
+        d.kind,
+        d.baseSalary,
+        d.dailyRate,
+        d.opening,
+        d.active,
+        d.note,
       ],
     );
   }
@@ -405,45 +313,98 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
     );
   }
 
-  // Transaction tables: full replace so client deletes actually remove Neon rows
-  await sql.query(`delete from loan_payments`);
-  await sql.query(`delete from rent_waivers`);
-  await sql.query(`delete from attendances`);
-  await sql.query(`delete from rent_payments`);
-  await sql.query(`delete from receipts`);
-  await sql.query(`delete from expenses`);
-  await sql.query(`delete from payouts`);
-  try {
-    await sql.query(`delete from bank_transfers`);
-  } catch {
-    /* older DB */
+  /**
+   * Transaction tables: UPSERT only (no DELETE ALL).
+   * Multi-device safe — one phone cannot wipe another phone's new salary/expense rows.
+   * Intentional deletes are applied via snap.deletedIds.
+   */
+  const deletedIds = Array.isArray((snap as { deletedIds?: string[] }).deletedIds)
+    ? ((snap as { deletedIds?: string[] }).deletedIds as string[]).filter(Boolean)
+    : [];
+  for (const id of deletedIds) {
+    for (const tbl of [
+      "payouts",
+      "expenses",
+      "receipts",
+      "rent_payments",
+      "loan_payments",
+      "bank_transfers",
+      "attendances",
+      "rent_waivers",
+    ]) {
+      try {
+        await sql.query(`delete from ${tbl} where id = $1`, [id]);
+      } catch {
+        /* table / row may not exist */
+      }
+    }
   }
 
   for (const p of snap.payouts ?? []) {
     await sql.query(
       `insert into payouts (id, driver_id, kind, amount, date, mode, status, bank_account_id, upi_vpa, note, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       on conflict (id) do update set
+         driver_id = excluded.driver_id,
+         kind = excluded.kind,
+         amount = excluded.amount,
+         date = excluded.date,
+         mode = excluded.mode,
+         status = excluded.status,
+         bank_account_id = excluded.bank_account_id,
+         upi_vpa = excluded.upi_vpa,
+         note = excluded.note`,
       [p.id, p.driverId, p.kind, p.amount, p.date, p.mode, p.status, p.bankAccountId, p.upiVpa, p.note, p.createdAt],
     );
   }
   for (const e of snap.expenses ?? []) {
     await sql.query(
       `insert into expenses (id, category, vendor, amount, date, mode, status, bank_account_id, upi_vpa, fleet_id, note, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       on conflict (id) do update set
+         category = excluded.category,
+         vendor = excluded.vendor,
+         amount = excluded.amount,
+         date = excluded.date,
+         mode = excluded.mode,
+         status = excluded.status,
+         bank_account_id = excluded.bank_account_id,
+         upi_vpa = excluded.upi_vpa,
+         fleet_id = excluded.fleet_id,
+         note = excluded.note`,
       [e.id, e.category, e.vendor, e.amount, e.date, e.mode, e.status, e.bankAccountId, e.upiVpa, e.fleetId, e.note, e.createdAt],
     );
   }
   for (const r of snap.receipts ?? []) {
     await sql.query(
       `insert into receipts (id, customer_id, customer_name, amount, date, mode, status, bank_account_id, fleet_id, note, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       on conflict (id) do update set
+         customer_id = excluded.customer_id,
+         customer_name = excluded.customer_name,
+         amount = excluded.amount,
+         date = excluded.date,
+         mode = excluded.mode,
+         status = excluded.status,
+         bank_account_id = excluded.bank_account_id,
+         fleet_id = excluded.fleet_id,
+         note = excluded.note`,
       [r.id, r.customerId, r.customerName, r.amount, r.date, r.mode, r.status, r.bankAccountId, r.fleetId, r.note, r.createdAt],
     );
   }
   for (const r of snap.rentPayments ?? []) {
     await sql.query(
       `insert into rent_payments (id, fleet_id, driver_id, amount, date, for_month, mode, status, note, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       on conflict (id) do update set
+         fleet_id = excluded.fleet_id,
+         driver_id = excluded.driver_id,
+         amount = excluded.amount,
+         date = excluded.date,
+         for_month = excluded.for_month,
+         mode = excluded.mode,
+         status = excluded.status,
+         note = excluded.note`,
       [r.id, r.fleetId, r.driverId, r.amount, r.date, r.forMonth, r.mode, r.status, r.note, r.createdAt],
     );
   }
@@ -464,7 +425,16 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
   for (const p of snap.loanPayments ?? []) {
     await sql.query(
       `insert into loan_payments (id, loan_id, kind, amount, date, mode, status, bank_account_id, note, created_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       on conflict (id) do update set
+         loan_id = excluded.loan_id,
+         kind = excluded.kind,
+         amount = excluded.amount,
+         date = excluded.date,
+         mode = excluded.mode,
+         status = excluded.status,
+         bank_account_id = excluded.bank_account_id,
+         note = excluded.note`,
       [p.id, p.loanId, p.kind, p.amount, p.date, p.mode, p.status, p.bankAccountId, p.note, p.createdAt],
     );
   }
@@ -472,7 +442,13 @@ export async function saveFinanceSnapshot(snap: FinanceSnapshot): Promise<void> 
     try {
       await sql.query(
         `insert into bank_transfers (id, from_bank_id, to_bank_id, amount, date, note, created_at)
-         values ($1,$2,$3,$4,$5,$6,$7)`,
+         values ($1,$2,$3,$4,$5,$6,$7)
+         on conflict (id) do update set
+           from_bank_id = excluded.from_bank_id,
+           to_bank_id = excluded.to_bank_id,
+           amount = excluded.amount,
+           date = excluded.date,
+           note = excluded.note`,
         [x.id, x.fromBankId, x.toBankId, x.amount, x.date, x.note, x.createdAt],
       );
     } catch {
