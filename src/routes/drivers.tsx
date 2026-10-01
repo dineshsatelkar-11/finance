@@ -218,11 +218,14 @@ function DriversPage() {
                                     size="sm"
                                     className="h-7 px-2 text-[11px]"
                                     onClick={() => {
-                                      const leave =
-                                        attendances.find(
-                                          (a) => a.driverId === d.id && a.month === p.date.slice(0, 7),
-                                        )?.leaveDays ?? 0;
-                                      const slip = slipFromSalaryPayout(d, p, payouts, fleets, leave);
+                                      const slip = slipFromSalaryPayout(
+                                        d,
+                                        p,
+                                        payouts,
+                                        fleets,
+                                        0,
+                                        attendances,
+                                      );
                                       downloadSalarySlipPdf(slip);
                                       printSalarySlip(slip);
                                     }}
