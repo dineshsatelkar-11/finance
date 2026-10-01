@@ -1,4 +1,12 @@
-import { inr, monthLabel, openWhatsApp, prevMonthISO, salarySettlement } from "./format";
+import {
+  daysInMonth,
+  inr,
+  monthLabel,
+  openWhatsApp,
+  prevMonthISO,
+  salarySettlement,
+  suggestedSalary,
+} from "./format";
 import type { Driver, Fleet, Payout } from "./types";
 
 export type SalarySlipData = {
@@ -8,11 +16,28 @@ export type SalarySlipData = {
   month: string;
   monthLabel: string;
   date: string;
+  /** Calendar days in salary month */
+  daysInMonth: number;
+  /** Full-month salary before leave (base or daily×days) */
+  baseSalary: number;
   leaveDays: number;
+  presentDays: number;
+  /** Amount reduced due to leave (base − gross) */
+  leaveAmount: number;
+  /** Gross after leave */
   gross: number;
   bonus: number;
+  /** Full monthly tempo rent (before off-days waiver) */
+  rentFull: number;
+  /** Days rent was waived (breakdown / off) */
+  rentOffDays: number;
+  /** Days rent is charged for */
+  rentDays: number;
+  /** Rent amount charged */
   rent: number;
+  rentFleetName: string | null;
   deduction: number;
+  /** Running balance before this slip (negative = advance already taken) */
   balanceBefore: number;
   slipAmount: number;
   balanceAfter: number;
@@ -20,6 +45,13 @@ export type SalarySlipData = {
 };
 
 const COMPANY = "Satelkars Logistic";
+
+function fullMonthSalary(
+  driver: { kind: string; baseSalary: number; dailyRate: number },
+  month: string,
+): number {
+  return suggestedSalary(driver, 0, month);
+}
 
 export function buildSalarySlipData(input: {
   driver: Driver;
@@ -43,6 +75,16 @@ export function buildSalarySlipData(input: {
     deduction: input.deduction || 0,
     rentOffDays: input.rentOffDays || 0,
   });
+  const dim = daysInMonth(input.month);
+  const leave = Math.max(0, Math.min(dim, Math.floor(input.leaveDays) || 0));
+  const present = Math.max(0, dim - leave);
+  const baseSalary = fullMonthSalary(input.driver, input.month);
+  const leaveAmount = Math.max(0, Math.round((baseSalary - settle.gross) * 100) / 100);
+
+  const rentFull = settle.rentFull || 0;
+  const rentOff = settle.rentOffDays || 0;
+  const rentDays = rentFull > 0 ? Math.max(0, dim - rentOff) : 0;
+
   const slip =
     input.slipAmountOverride != null && input.slipAmountOverride > 0
       ? input.slipAmountOverride
@@ -67,10 +109,18 @@ export function buildSalarySlipData(input: {
     month: input.month,
     monthLabel: monthLabel(input.month),
     date: input.date,
-    leaveDays: input.leaveDays,
+    daysInMonth: dim,
+    baseSalary,
+    leaveDays: leave,
+    presentDays: present,
+    leaveAmount,
     gross: settle.gross,
     bonus: settle.bonus,
+    rentFull,
+    rentOffDays: rentOff,
+    rentDays,
     rent: settle.rent,
+    rentFleetName: settle.rentFleetName,
     deduction: settle.deduction,
     balanceBefore,
     slipAmount: slip,
@@ -86,22 +136,42 @@ export function salarySlipWhatsAppText(d: SalarySlipData): string {
     "Driver: " + d.driverName,
     "Date: " + d.date,
     "",
-    "Gross salary: " + inr(d.gross),
-    "Total leave: " + d.leaveDays + " day(s)",
+    "1. Monthly salary: " + inr(d.baseSalary),
+    "2. Leave: " +
+      d.leaveDays +
+      " day(s)" +
+      (d.leaveAmount > 0 ? " · −" + inr(d.leaveAmount) : "") +
+      " → Gross " +
+      inr(d.gross),
   ];
-  if (d.bonus > 0) lines.push("Bonus: +" + inr(d.bonus));
-  if (d.rent > 0) lines.push("Tempo rent: -" + inr(d.rent));
-  if (d.deduction > 0) lines.push("Deduction: -" + inr(d.deduction));
+  if (d.bonus > 0) lines.push("   Bonus: +" + inr(d.bonus));
   lines.push(
-    d.balanceBefore < 0
-      ? "Advance / earlier balance: -" + inr(Math.abs(d.balanceBefore))
-      : "Earlier balance: " + inr(d.balanceBefore),
+    "3. Advance / earlier balance: " +
+      (d.balanceBefore < 0
+        ? "−" + inr(Math.abs(d.balanceBefore)) + " (advance taken)"
+        : inr(d.balanceBefore)),
   );
-  lines.push("*Salary slip: " + inr(d.slipAmount) + "*");
+  if (d.rent > 0 || d.rentFull > 0) {
+    lines.push(
+      "4. Tempo rent: " +
+        d.rentDays +
+        "/" +
+        d.daysInMonth +
+        " day(s)" +
+        (d.rentFleetName ? " (" + d.rentFleetName + ")" : "") +
+        " · −" +
+        inr(d.rent),
+    );
+  } else {
+    lines.push("4. Tempo rent: —");
+  }
+  if (d.deduction > 0) lines.push("   Other deduction: −" + inr(d.deduction));
+  lines.push("");
+  lines.push("5. *Salary slip amount: " + inr(d.slipAmount) + "*");
   lines.push(
     d.balanceAfter >= 0
-      ? "*Net payable (company owes): " + inr(d.balanceAfter) + "*"
-      : "*Still over-advanced: " + inr(Math.abs(d.balanceAfter)) + "*",
+      ? "*Final · Company owes: " + inr(d.balanceAfter) + "*"
+      : "*Final · Still over-advanced: " + inr(Math.abs(d.balanceAfter)) + "*",
   );
   lines.push("");
   lines.push("_Account slip only. Cash paid later as advance._");
@@ -109,7 +179,6 @@ export function salarySlipWhatsAppText(d: SalarySlipData): string {
 }
 
 function escapeHtml(s: string) {
-  // Build entities without literal & so APIs cannot strip them.
   const e = (name: string) => String.fromCharCode(38) + name + ";";
   return String(s)
     .replace(/&/g, e("amp"))
@@ -119,19 +188,52 @@ function escapeHtml(s: string) {
 }
 
 export function salarySlipHtml(d: SalarySlipData): string {
-  const row = (label: string, value: string, bold = false) =>
-    "<tr><td style=\"padding:8px 0;color:#555;border-bottom:1px solid #eee\">" +
-    escapeHtml(label) +
-    "</td><td style=\"padding:8px 0;text-align:right;border-bottom:1px solid #eee;" +
-    (bold ? "font-weight:700;font-size:16px" : "") +
-    "\">" +
-    escapeHtml(value) +
-    "</td></tr>";
+  const row = (label: string, value: string, opts?: { bold?: boolean; sub?: string }) => {
+    const bold = opts?.bold;
+    const sub = opts?.sub
+      ? "<div style=\"font-size:11px;color:#888;margin-top:2px\">" + escapeHtml(opts.sub) + "</div>"
+      : "";
+    return (
+      "<tr><td style=\"padding:10px 0;color:#555;border-bottom:1px solid #eee;vertical-align:top\">" +
+      escapeHtml(label) +
+      sub +
+      "</td><td style=\"padding:10px 0;text-align:right;border-bottom:1px solid #eee;vertical-align:top;" +
+      (bold ? "font-weight:700;font-size:16px;color:#111" : "") +
+      "\">" +
+      escapeHtml(value) +
+      "</td></tr>"
+    );
+  };
 
-  const balBefore =
+  const leaveValue =
+    d.leaveDays > 0
+      ? d.leaveDays + " day(s)" + (d.leaveAmount > 0 ? " · −" + inr(d.leaveAmount) : "")
+      : "0 day(s)";
+  const leaveSub =
+    d.leaveDays > 0
+      ? "Present " + d.presentDays + "/" + d.daysInMonth + " → gross " + inr(d.gross)
+      : "Full month · gross " + inr(d.gross);
+
+  const advValue =
     d.balanceBefore < 0
-      ? "- " + inr(Math.abs(d.balanceBefore)) + " (advance)"
+      ? "− " + inr(Math.abs(d.balanceBefore))
       : inr(d.balanceBefore);
+  const advSub =
+    d.balanceBefore < 0 ? "Advance already taken / driver owes" : "Earlier balance (company side)";
+
+  const rentValue = d.rent > 0 || d.rentFull > 0 ? "− " + inr(d.rent) : "—";
+  const rentSub =
+    d.rentFull > 0
+      ? (d.rentFleetName ? d.rentFleetName + " · " : "") +
+        "Charged " +
+        d.rentDays +
+        "/" +
+        d.daysInMonth +
+        " day(s)" +
+        (d.rentOffDays > 0 ? " · off " + d.rentOffDays + "d" : "") +
+        (d.rentFull !== d.rent ? " · full " + inr(d.rentFull) : "")
+      : "No tempo on rent";
+
   const netLine =
     d.balanceAfter >= 0
       ? "Company owes " + inr(d.balanceAfter)
@@ -159,14 +261,19 @@ export function salarySlipHtml(d: SalarySlipData): string {
     "</p><p style=\"margin:0 0 16px;font-size:12px;color:#666\">Date: " +
     escapeHtml(d.date) +
     "</p><table>" +
-    row("Gross salary", inr(d.gross)) +
-    row("Total leave", String(d.leaveDays) + " day(s)") +
+    row("1. Monthly salary", inr(d.baseSalary), {
+      sub: "Full month before leave",
+    }) +
+    row("2. Leave", leaveValue, { sub: leaveSub }) +
     (d.bonus > 0 ? row("Bonus", "+ " + inr(d.bonus)) : "") +
-    (d.rent > 0 ? row("Tempo rent", "- " + inr(d.rent)) : "") +
-    (d.deduction > 0 ? row("Deduction", "- " + inr(d.deduction)) : "") +
-    row("Advance / earlier balance", balBefore) +
-    row("Salary slip amount", inr(d.slipAmount), true) +
-    row("Net payable", netLine, true) +
+    row("3. Advance / earlier balance", advValue, { sub: advSub }) +
+    row("4. Tempo rent", rentValue, { sub: rentSub }) +
+    (d.deduction > 0 ? row("Other deduction", "− " + inr(d.deduction)) : "") +
+    row("5. Salary slip amount", inr(d.slipAmount), {
+      bold: true,
+      sub: "Gross + bonus − rent − deduction",
+    }) +
+    row("Final (net payable)", netLine, { bold: true }) +
     "</table><p class=\"foot\">This is an account slip only.<br/>Cash is paid later as advance (~10th).</p></div>" +
     "<script>window.onload=function(){setTimeout(function(){try{window.print()}catch(e){}},400)}<\/script></body></html>"
   );
@@ -179,10 +286,8 @@ export function printSalarySlip(d: SalarySlipData) {
   const url = URL.createObjectURL(blob);
   const w = window.open(url, "_blank");
   if (!w) {
-    // Popup blocked — fall back to download
     downloadBlob(blob, "salary-slip-" + d.driverName.replace(/\s+/g, "-") + ".html");
   }
-  // Revoke after the new tab has had time to load
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
@@ -194,22 +299,35 @@ export function downloadSalarySlipPdf(d: SalarySlipData) {
     "Driver: " + d.driverName,
     "Date: " + d.date,
     "",
-    "Gross salary: " + inr(d.gross),
-    "Total leave: " + d.leaveDays + " day(s)",
+    "1. Monthly salary: " + inr(d.baseSalary),
+    "2. Leave: " +
+      d.leaveDays +
+      " day(s)" +
+      (d.leaveAmount > 0 ? " (-" + inr(d.leaveAmount) + ")" : "") +
+      " -> Gross " +
+      inr(d.gross),
+    "3. Advance / earlier balance: " +
+      (d.balanceBefore < 0 ? "-" + inr(Math.abs(d.balanceBefore)) : inr(d.balanceBefore)),
   ];
+  if (d.rent > 0 || d.rentFull > 0) {
+    lines.push(
+      "4. Tempo rent: " +
+        d.rentDays +
+        "/" +
+        d.daysInMonth +
+        " days -" +
+        inr(d.rent),
+    );
+  } else {
+    lines.push("4. Tempo rent: -");
+  }
   if (d.bonus > 0) lines.push("Bonus: +" + inr(d.bonus));
-  if (d.rent > 0) lines.push("Tempo rent: -" + inr(d.rent));
   if (d.deduction > 0) lines.push("Deduction: -" + inr(d.deduction));
-  lines.push(
-    d.balanceBefore < 0
-      ? "Advance / earlier balance: -" + inr(Math.abs(d.balanceBefore))
-      : "Earlier balance: " + inr(d.balanceBefore),
-  );
-  lines.push("Salary slip amount: " + inr(d.slipAmount));
+  lines.push("5. Salary slip amount: " + inr(d.slipAmount));
   lines.push(
     d.balanceAfter >= 0
-      ? "Net payable (company owes): " + inr(d.balanceAfter)
-      : "Still over-advanced: " + inr(Math.abs(d.balanceAfter)),
+      ? "Final - Company owes: " + inr(d.balanceAfter)
+      : "Final - Over-advanced: " + inr(Math.abs(d.balanceAfter)),
   );
   lines.push("");
   lines.push("Account slip only. Cash paid later as advance.");
@@ -272,8 +390,6 @@ function buildSimplePdf(lines: string[]): Uint8Array {
 
 /**
  * Resolve salary-month + leave for an existing salary payout.
- * Leave is often stored under the *work* month (e.g. Sep), while the payout
- * date is when the slip was posted (e.g. Oct). Note usually has "leave N".
  */
 export function resolveSalarySlipMeta(
   payout: Payout,
@@ -283,11 +399,9 @@ export function resolveSalarySlipMeta(
   const note = String(payout.note || "");
   const payYm = String(payout.date || "").slice(0, 7);
 
-  // Prefer explicit ISO month in note: "Salary slip 2026-09 · leave 22"
   const ymMatch = note.match(/(?:Salary slip|ym:)\s*(\d{4}-\d{2})/i);
   let month = ymMatch?.[1] || "";
 
-  // Leave from note
   const leaveMatch = note.match(/leave\s+(\d+)/i);
   let leaveDays =
     leaveMatch && Number.isFinite(Number(leaveMatch[1]))
@@ -295,7 +409,6 @@ export function resolveSalarySlipMeta(
       : NaN;
 
   if (!month) {
-    // Typical: salary for previous calendar month, posted this month
     month = payYm && /^\d{4}-\d{2}$/.test(payYm) ? prevMonthISO(payYm) : payYm;
   }
 
@@ -322,7 +435,6 @@ export function slipFromSalaryPayout(
   attendances: { driverId: string; month: string; leaveDays: number }[] = [],
 ): SalarySlipData {
   const meta = resolveSalarySlipMeta(payout, driver.id, attendances);
-  // Caller leave only if > 0 and note/attendance had none — prefer meta
   const leaves = meta.leaveDays > 0 ? meta.leaveDays : Math.max(0, leaveDays || 0);
   const month = meta.month || String(payout.date || "").slice(0, 7);
   return buildSalarySlipData({
