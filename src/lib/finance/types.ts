@@ -1,46 +1,76 @@
-export type DriverKind = "salary" | "daily";
+export type PayMode = "upi" | "cash" | "bank";
+
+export type DriverKind = "full" | "part";
+
+export type PayoutKind = "salary" | "advance" | "extra_route" | "bonus" | "fine" | "return";
+
+export type PayoutStatus = "pending" | "paid" | "failed";
+
+export type FleetKind = "mini" | "tempo" | "truck" | "other";
+
+export type LoanStatus = "active" | "closed";
+
+export type LoanPaymentKind = "emi" | "interest" | "prepay" | "disbursement";
 
 export type Driver = {
   id: string;
   name: string;
   mobile: string;
-  upiVpa: string;
-  upiPayeeName: string;
   kind: DriverKind;
   baseSalary: number;
   dailyRate: number;
-  opening: number;
+  /**
+   * Opening balance for this driver (₹).
+   * Positive = company owes driver; negative = driver owes company.
+   * Optional for older local data; treat missing as 0.
+   */
+  openingBalance?: number;
   active: boolean;
+  /** Canonical VPA stored on the driver — never only in a side map keyed by name. */
+  upiVpa: string;
+  upiPayeeName: string;
+  upiUpdatedAt: string | null;
+  /** Fleet this driver currently runs / rents (optional). */
+  fleetId: string | null;
   note: string;
 };
-
-export type FleetKind = "owned" | "rented";
 
 export type Fleet = {
   id: string;
   name: string;
   regNo: string;
   kind: FleetKind;
+  /** Monthly rent charged to the driver (0 if company-owned / route-only). */
   monthlyRent: number;
-  active: boolean;
-  loanId: string;
-  note: string;
-  /** When false, skip tempo rent deduction on salary slip. */
+  /**
+   * When false, vehicle is route-only (no rent collected from driver).
+   * Missing on older data → treat as true if monthlyRent > 0.
+   */
   chargesRent?: boolean;
+  active: boolean;
+  loanId: string | null;
+  note: string;
 };
 
 export type Loan = {
   id: string;
+  name: string;
   bank: string;
   accountNo: string;
-  emi: number;
+  ifsc: string;
+  principal: number;
+  emiAmount: number;
   emiDay: number;
-  opening: number;
-  fleetId: string;
+  totalEmis: number;
+  startDate: string;
+  endDate: string;
+  interestRate: number;
+  outstanding: number;
+  pendingEmis: number;
+  status: LoanStatus;
+  fleetId: string | null;
   note: string;
 };
-
-export type LoanPaymentKind = "emi" | "principal" | "other";
 
 export type LoanPayment = {
   id: string;
@@ -129,18 +159,6 @@ export type RentWaiver = {
   amount: number;
   note: string;
 };
-
-export type PayoutKind =
-  | "advance"
-  | "salary"
-  | "bonus"
-  | "extra_route"
-  | "return"
-  | "fine";
-
-export type PayoutStatus = "pending" | "paid" | "failed";
-
-export type PayMode = "cash" | "upi" | "bank";
 
 export type Payout = {
   id: string;
