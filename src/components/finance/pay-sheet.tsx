@@ -181,8 +181,12 @@ export function PaySheet({
         return;
       }
       setAttendance(driver.id, salaryForMonth, leaveN);
+      const save = await flushFinanceSave();
+      if (!save.ok) {
+        toast.error(save.error || "Salary on phone but failed to reach cloud — try again");
+        return;
+      }
       onOpenChange(false);
-      void flushFinanceSave();
       toast.success(
         data.balanceAfter >= 0
           ? `Slip ₹${Math.round(slip)} posted — company owes ₹${Math.round(data.balanceAfter)}`
@@ -222,14 +226,14 @@ export function PaySheet({
     setStep("confirm");
   }
 
-  function markPaid() {
+  async function markPaid() {
     if (pendingId) {
-      const r = setPayoutStatus(pendingId, "paid");
-      if (!r.ok) {
-        toast.error(r.error);
+      setPayoutStatus(pendingId, "paid");
+      const save = await flushFinanceSave();
+      if (!save.ok) {
+        toast.error(save.error || "Paid on phone but failed to reach cloud");
         return;
       }
-      void flushFinanceSave();
     }
     toast.success("Marked paid");
     onOpenChange(false);
@@ -457,7 +461,7 @@ export function PaySheet({
                 <span>{kind}</span>
               </div>
             </div>
-            <Button type="button" className="w-full" onClick={markPaid}>
+            <Button type="button" className="w-full" onClick={() => void markPaid()}>
               Mark paid
             </Button>
             <Button type="button" variant="outline" className="w-full" onClick={markFailed}>
