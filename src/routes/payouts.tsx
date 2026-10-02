@@ -1,12 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { FileText, Pencil, Trash2, Wallet } from "lucide-react";
-import {
-  downloadSalarySlipPdf,
-  printSalarySlip,
-  slipFromSalaryPayout,
-} from "@/lib/finance/salary-slip";
+import { Pencil, Trash2, Wallet } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { PaySheet } from "@/components/finance/pay-sheet";
 import { useFinance } from "@/lib/finance/store";
-import { rememberDeletedSeedId } from "@/lib/finance/sync";
+import { rememberDeletedSeedId, rememberDeletedId } from "@/lib/finance/sync";
 import { inr, monthISO, monthLabel, prevMonthISO, shortDate } from "@/lib/finance/format";
 import type { Payout } from "@/lib/finance/types";
 
@@ -25,8 +20,6 @@ function PayoutsPage() {
   const month = useFinance((s) => s.month);
   const payouts = useFinance((s) => s.payouts);
   const drivers = useFinance((s) => s.drivers);
-  const fleets = useFinance((s) => s.fleets);
-  const attendances = useFinance((s) => s.attendances);
   const updatePayout = useFinance((s) => s.updatePayout);
   const removePayout = useFinance((s) => s.removePayout);
   const clearHeldOrFailedPayouts = useFinance((s) => s.clearHeldOrFailedPayouts);
@@ -118,22 +111,22 @@ function PayoutsPage() {
       toast.error("Date is required");
       return;
     }
-    updatePayout(editRow.id, { amount: amt, date: editDate, note: editNote.trim() });
-    toast.success("Payout updated");
+    updatePayout(editRow.id, {
+      amount: Math.round(amt * 100) / 100,
+      date: editDate,
+      note: editNote,
+    });
+    toast.success("Updated");
     setEditRow(null);
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="space-y-4 p-4 pb-24">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl font-medium tracking-tight">Payouts</h1>
-          <p className="mt-1 max-w-lg text-sm text-muted">
-            Confirm after the money leaves. Edit or delete any row. Clear only removes held & failed.
-          </p>
-          <p className="mt-1 text-sm font-medium tabular-nums text-ink">
+          <h1 className="font-display text-2xl font-semibold tracking-tight">Pay</h1>
+          <p className="text-sm text-muted">
             Total (filtered, paid) {inr(totalPaid)}
-            <span className="ml-2 font-normal text-muted">· {rows.length} row(s)</span>
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -141,15 +134,11 @@ function PayoutsPage() {
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={() => {
-                if (
-                  !window.confirm(
-                    `Clear ${heldFailed.length} held/failed payout(s)? Paid rows stay.`,
-                  )
-                )
-                  return;
+                if (!window.confirm(`Clear ${heldFailed.length} held/failed?`)) return;
                 const n = clearHeldOrFailedPayouts(month);
-                toast.success(`Cleared ${n}`);
+                toast.message(`Cleared ${n}`);
               }}
             >
               Clear held/failed
@@ -157,126 +146,92 @@ function PayoutsPage() {
           ) : null}
           <Button
             type="button"
+            size="sm"
             onClick={() => {
               setPayId(driverFilter || null);
               setPayOpen(true);
             }}
           >
-            <Wallet className="size-4" /> Pay
+            <Wallet className="size-3.5" /> Pay
           </Button>
         </div>
       </div>
 
-      {driverFilter ? (
-        <p className="text-sm text-muted">
-          Filtered to{" "}
-          <span className="font-medium text-ink">
-            {drivers.find((d) => d.id === driverFilter)?.name || "driver"}
-          </span>
-          .{" "}
-          <a href="/payouts" className="text-accent underline-offset-2 hover:underline">
-            Show all drivers
-          </a>
-        </p>
-      ) : null}
-
-      <div className="space-y-2">
-        <div className="flex flex-wrap gap-1.5">
-          {STATUS_CHIPS.map((c) => (
-            <button
-              key={c.id || "all-status"}
-              type="button"
-              onClick={() => setStatusFilter(c.id)}
-              className={
-                statusFilter === c.id
-                  ? "rounded-full border border-accent bg-accent-soft px-3 py-1 text-[12px] font-medium text-accent"
-                  : "rounded-full border border-line bg-raised px-3 py-1 text-[12px] text-muted hover:text-ink"
-              }
-            >
-              {c.label}
-            </button>
-          ))}
+      <div className="flex flex-wrap gap-2">
+        {STATUS_CHIPS.map((c) => (
+          <button
+            key={c.id || "all-status"}
+            type="button"
+            className={
+              "rounded-full border px-3 py-1 text-xs " +
+              (statusFilter === c.id
+                ? "border-navy bg-navy text-navy-fg"
+                : "border-line bg-canvas text-muted")
+            }
+            onClick={() => setStatusFilter(c.id)}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {KIND_CHIPS.map((c) => (
+          <button
+            key={c.id || "all-kind"}
+            type="button"
+            className={
+              "rounded-full border px-3 py-1 text-xs " +
+              (kindFilter === c.id
+                ? "border-navy bg-navy text-navy-fg"
+                : "border-line bg-canvas text-muted")
+            }
+            onClick={() => setKindFilter(c.id)}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2 items-end">
+        <div>
+          <Label className="text-[11px]">Month</Label>
+          <select
+            className="mt-1 block rounded-md border border-line bg-canvas px-2 py-1.5 text-sm"
+            value={monthFilter}
+            onChange={(e) => setMonthFilter(e.target.value)}
+          >
+            <option value="">All months</option>
+            {monthOptions.map((ym) => (
+              <option key={ym} value={ym}>
+                {monthLabel(ym)}
+              </option>
+            ))}
+          </select>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {KIND_CHIPS.map((c) => (
-            <button
-              key={c.id || "all-kind"}
-              type="button"
-              onClick={() => setKindFilter(c.id)}
-              className={
-                kindFilter === c.id
-                  ? "rounded-full border border-accent bg-accent-soft px-3 py-1 text-[12px] font-medium text-accent"
-                  : "rounded-full border border-line bg-raised px-3 py-1 text-[12px] text-muted hover:text-ink"
-              }
-            >
-              {c.label}
-            </button>
-          ))}
+        <div>
+          <Label className="text-[11px]">From</Label>
+          <Input className="mt-1" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
         </div>
-        <div className="flex flex-wrap items-end gap-2 pt-1">
-          <div>
-            <Label className="text-[11px] text-muted">Month</Label>
-            <select
-              className="mt-0.5 h-9 rounded-md border border-line bg-raised px-2 text-sm"
-              value={monthFilter}
-              onChange={(e) => setMonthFilter(e.target.value)}
-            >
-              <option value="">All months</option>
-              {monthOptions.map((ym) => (
-                <option key={ym} value={ym}>
-                  {monthLabel(ym)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label className="text-[11px] text-muted">From date</Label>
-            <Input
-              type="date"
-              className="mt-0.5 h-9"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label className="text-[11px] text-muted">To date</Label>
-            <Input
-              type="date"
-              className="mt-0.5 h-9"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
-          </div>
-          {monthFilter || dateFrom || dateTo ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-9"
-              onClick={() => {
-                setMonthFilter("");
-                setDateFrom("");
-                setDateTo("");
-              }}
-            >
-              Clear dates
-            </Button>
-          ) : null}
+        <div>
+          <Label className="text-[11px]">To</Label>
+          <Input className="mt-1" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         </div>
+        {monthFilter || dateFrom || dateTo ? (
+          <Button type="button" variant="ghost" size="sm" onClick={() => { setMonthFilter(""); setDateFrom(""); setDateTo(""); }}>
+            Clear dates
+          </Button>
+        ) : null}
       </div>
 
-      <div className="space-y-2">
+      <ul className="space-y-2">
         {rows.length === 0 ? (
-          <Card>
-            <p className="text-sm text-muted">No payouts yet.</p>
-          </Card>
+          <Card className="p-6 text-center text-sm text-muted">No payouts match filters.</Card>
         ) : (
           rows.map((p) => {
             const d = drivers.find((x) => x.id === p.driverId);
             return (
-              <Card key={p.id} className="p-4">
+              <Card key={p.id} className="p-3">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{d?.name || "Driver"}</span>
                       <Badge tone="muted">{p.kind.replace("_", " ")}</Badge>
@@ -296,27 +251,6 @@ function PayoutsPage() {
                   <div className="font-medium tabular-nums">{inr(p.amount)}</div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {p.kind === "salary" && d ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const slip = slipFromSalaryPayout(
-                          d,
-                          p,
-                          payouts,
-                          fleets,
-                          0,
-                          attendances,
-                        );
-                        downloadSalarySlipPdf(slip);
-                        printSalarySlip(slip);
-                      }}
-                    >
-                      <FileText className="size-3.5" /> Slip
-                    </Button>
-                  ) : null}
                   {p.status === "pending" ? (
                     <Button
                       type="button"
@@ -339,6 +273,7 @@ function PayoutsPage() {
                     onClick={() => {
                       if (!window.confirm("Delete this payout?")) return;
                       rememberDeletedSeedId(p.id);
+                      rememberDeletedId(p.id);
                       removePayout(p.id);
                       toast.message("Deleted");
                     }}
@@ -350,38 +285,24 @@ function PayoutsPage() {
             );
           })
         )}
-      </div>
+      </ul>
 
-      <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
+      <PaySheet open={payOpen} onOpenChange={setPayOpen} driverId={payId} />
+
+      <Dialog open={!!editRow} onOpenChange={(v) => !v && setEditRow(null)}>
         <DialogContent title="Edit payout">
-          <div className="space-y-4 text-left">
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-amt">Amount (₹)</Label>
-              <Input
-                id="edit-amt"
-                type="number"
-                inputMode="decimal"
-                className="tabular-nums"
-                value={editAmt}
-                onChange={(e) => setEditAmt(e.target.value)}
-              />
+          <div className="space-y-3">
+            <div>
+              <Label>Amount ₹</Label>
+              <Input inputMode="decimal" value={editAmt} onChange={(e) => setEditAmt(e.target.value)} />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-date">Date</Label>
-              <Input
-                id="edit-date"
-                type="date"
-                value={editDate}
-                onChange={(e) => setEditDate(e.target.value)}
-              />
+            <div>
+              <Label>Date</Label>
+              <Input value={editDate} onChange={(e) => setEditDate(e.target.value)} />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-note">Note</Label>
-              <Input
-                id="edit-note"
-                value={editNote}
-                onChange={(e) => setEditNote(e.target.value)}
-              />
+            <div>
+              <Label>Note</Label>
+              <Input value={editNote} onChange={(e) => setEditNote(e.target.value)} />
             </div>
             <Button type="button" className="w-full" onClick={saveEdit}>
               Save
@@ -389,8 +310,6 @@ function PayoutsPage() {
           </div>
         </DialogContent>
       </Dialog>
-
-      <PaySheet open={payOpen} onOpenChange={setPayOpen} driverId={payId} />
     </div>
   );
 }
