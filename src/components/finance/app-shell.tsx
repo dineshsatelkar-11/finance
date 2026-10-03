@@ -14,7 +14,9 @@ import {
   Users,
   MessageCircle,
   X,
+  RefreshCw,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { monthLabel } from "@/lib/finance/format";
 import { useFinance } from "@/lib/finance/store";
@@ -46,6 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const setMonth = useFinance((s) => s.setMonth);
   const [moreOpen, setMoreOpen] = useState(false);
   const [dbNote, setDbNote] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let unsub = () => {};
@@ -79,6 +82,26 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, [moreOpen]);
 
+  async function onRefresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const r = await hydrateFinanceFromDb();
+      if (!r.ok) {
+        toast.error(r.error ? `Refresh failed: ${r.error}` : "Cloud DB offline");
+        setDbNote(r.error ? `Cloud DB offline: ${r.error}` : "Cloud DB offline");
+        return;
+      }
+      toast.success("Refreshed from cloud");
+      setDbNote("Cloud DB connected — data reloaded");
+      window.setTimeout(() => setDbNote(null), 3000);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Refresh failed");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const secondaryActive = SECONDARY.some((n) => n.to === pathname);
 
   return (
@@ -93,17 +116,29 @@ export function AppShell({ children }: { children: ReactNode }) {
               Finance desk
             </div>
           </div>
-          {pathname === "/" ? (
-            <label className="flex shrink-0 items-center gap-1.5 text-sm text-muted">
-              <span className="sr-only sm:not-sr-only sm:inline">Month</span>
-              <input
-                type="month"
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
-                className="h-9 max-w-[9.5rem] rounded-md border border-line bg-raised px-1.5 text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25 sm:max-w-none sm:px-2 sm:text-sm"
-              />
-            </label>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            {pathname === "/" ? (
+              <label className="flex items-center gap-1.5 text-sm text-muted">
+                <span className="sr-only sm:not-sr-only sm:inline">Month</span>
+                <input
+                  type="month"
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                  className="h-9 max-w-[9.5rem] rounded-md border border-line bg-raised px-1.5 text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25 sm:max-w-none sm:px-2 sm:text-sm"
+                />
+              </label>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void onRefresh()}
+              disabled={refreshing}
+              title="Reload from cloud DB"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-line bg-raised px-2.5 text-[13px] font-medium text-ink transition-colors hover:bg-accent-soft disabled:opacity-60"
+            >
+              <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
+              <span className="hidden sm:inline">{refreshing ? "Refreshing…" : "Refresh"}</span>
+            </button>
+          </div>
         </div>
 
         <nav className="mx-auto hidden max-w-6xl gap-1 overflow-x-auto px-2 pb-2 sm:flex sm:px-4">
