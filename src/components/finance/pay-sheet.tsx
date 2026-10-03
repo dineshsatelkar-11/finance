@@ -227,25 +227,33 @@ export function PaySheet({
   }
 
   async function markPaid() {
-    if (pendingId) {
-      setPayoutStatus(pendingId, "paid");
+    const id = pendingId;
+    if (id) {
+      setPayoutStatus(id, "paid");
+    }
+    // Close sheet first so UI is not stuck waiting on cloud
+    setPendingId(null);
+    setStep("form");
+    onOpenChange(false);
+    toast.success("Marked paid");
+    if (id) {
       const save = await flushFinanceSave();
       if (!save.ok) {
         toast.error(save.error || "Paid on phone but failed to reach cloud");
-        return;
       }
     }
-    toast.success("Marked paid");
-    onOpenChange(false);
   }
 
   function markFailed() {
-    if (pendingId) {
-      setPayoutStatus(pendingId, "failed");
-      void flushFinanceSave();
+    const id = pendingId;
+    if (id) {
+      setPayoutStatus(id, "failed");
     }
-    toast.message("Marked failed");
+    setPendingId(null);
+    setStep("form");
     onOpenChange(false);
+    toast.message("Marked failed");
+    if (id) void flushFinanceSave();
   }
 
   return (
@@ -393,7 +401,7 @@ export function PaySheet({
                 </div>
                 <div>
                   <Label>Date</Label>
-                  <Input value={date} onChange={(e) => setDate(e.target.value)} />
+                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                 </div>
                 <div>
                   <Label>Note</Label>
@@ -428,7 +436,7 @@ export function PaySheet({
                 </div>
                 <div>
                   <Label>Date</Label>
-                  <Input value={date} onChange={(e) => setDate(e.target.value)} />
+                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                 </div>
                 <div>
                   <Label>Note</Label>
