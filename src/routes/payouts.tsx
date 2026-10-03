@@ -319,7 +319,7 @@ function PayoutsPage() {
             </div>
             <div>
               <Label>Date</Label>
-              <Input value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+              <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
             </div>
             <div>
               <Label>Note</Label>
