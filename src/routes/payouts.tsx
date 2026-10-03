@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Pencil, Trash2, Wallet } from "lucide-react";
+import { Pencil, Trash2, Wallet, FileText } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { useFinance } from "@/lib/finance/store";
 import { rememberDeletedSeedId, rememberDeletedId } from "@/lib/finance/sync";
 import { inr, monthISO, monthLabel, prevMonthISO, shortDate } from "@/lib/finance/format";
 import type { Payout } from "@/lib/finance/types";
+import { printSalarySlip, slipFromSalaryPayout } from "@/lib/finance/salary-slip";
 
 export const Route = createFileRoute("/payouts")({ component: PayoutsPage });
 
@@ -24,6 +25,8 @@ function PayoutsPage() {
   const removePayout = useFinance((s) => s.removePayout);
   const clearHeldOrFailedPayouts = useFinance((s) => s.clearHeldOrFailedPayouts);
   const setPayoutStatus = useFinance((s) => s.setPayoutStatus);
+  const fleets = useFinance((s) => s.fleets);
+  const attendances = useFinance((s) => s.attendances);
 
   const search =
     typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
@@ -251,6 +254,24 @@ function PayoutsPage() {
                   <div className="font-medium tabular-nums">{inr(p.amount)}</div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {p.kind === "salary" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const drv = drivers.find((x) => x.id === p.driverId);
+                        if (!drv) {
+                          toast.error("Driver not found");
+                          return;
+                        }
+                        const data = slipFromSalaryPayout(drv, p, payouts, fleets, 0, attendances);
+                        printSalarySlip(data);
+                      }}
+                    >
+                      <FileText className="size-3.5" /> Slip
+                    </Button>
+                  ) : null}
                   {p.status === "pending" ? (
                     <Button
                       type="button"

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Trash2, Wallet } from "lucide-react";
+import { Trash2, Wallet, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
 import { rememberDeletedId } from "@/lib/finance/sync";
 import { cn } from "@/lib/utils";
 import type { Payout } from "@/lib/finance/types";
+import { printSalarySlip, slipFromSalaryPayout } from "@/lib/finance/salary-slip";
 
 export const Route = createFileRoute("/drivers")({ component: DriversPage });
 
@@ -45,6 +46,7 @@ function DriversPage() {
   const month = useFinance((s) => s.month);
   const drivers = useFinance((s) => s.drivers);
   const payouts = useFinance((s) => s.payouts);
+  const fleets = useFinance((s) => s.fleets);
   const attendances = useFinance((s) => s.attendances);
   const removePayout = useFinance((s) => s.removePayout);
 
@@ -206,6 +208,28 @@ function DriversPage() {
                                     {isIn || isSalary ? "+" : isNeutral ? "" : "−"}
                                     {inr(p.amount)}
                                   </div>
+                                  {isSalary ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 px-2 text-[11px]"
+                                      onClick={() => {
+                                        const data = slipFromSalaryPayout(
+                                          d,
+                                          p,
+                                          payouts,
+                                          fleets,
+                                          0,
+                                          attendances,
+                                        );
+                                        printSalarySlip(data);
+                                      }}
+                                    >
+                                      <FileText className="size-3.5" />
+                                      Slip
+                                    </Button>
+                                  ) : null}
                                   <Button
                                     type="button"
                                     variant="outline"
