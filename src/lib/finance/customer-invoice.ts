@@ -24,10 +24,10 @@ export type CustomerInvoicePrintData = {
 
 function escapeHtml(s: string) {
   return String(s)
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">")
-    .replace(/"/g, """);
+    .replace(/&/g, "&" + "amp;")
+    .replace(/</g, "&" + "lt;")
+    .replace(/>/g, "&" + "gt;")
+    .replace(/"/g, "&" + "quot;");
 }
 
 export function makeInvoiceNo(date: string, id: string) {
