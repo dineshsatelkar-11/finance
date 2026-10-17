@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Printer, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,11 @@ import {
 } from "@/components/ui/select";
 import { defaultBankId, useFinance } from "@/lib/finance/store";
 import { inr, openWhatsApp, shortDate, todayISO, uid } from "@/lib/finance/format";
-import type { Customer, PayMode } from "@/lib/finance/types";
+import {
+  buildReceiptInvoiceData,
+  printReceiptInvoice,
+} from "@/lib/finance/receipt-invoice";
+import type { Customer, PayMode, Receipt } from "@/lib/finance/types";
 
 export const Route = createFileRoute("/receipts")({ component: ReceiptsPage });
 
@@ -23,6 +27,7 @@ function ReceiptsPage() {
   const receipts = useFinance((s) => s.receipts);
   const customers = useFinance((s) => s.customers);
   const fleets = useFinance((s) => s.fleets);
+  const banks = useFinance((s) => s.banks);
   const recordReceipt = useFinance((s) => s.recordReceipt);
   const removeReceipt = useFinance((s) => s.removeReceipt);
   const upsertCustomer = useFinance((s) => s.upsertCustomer);
@@ -105,7 +110,7 @@ function ReceiptsPage() {
     setNote("");
   }
 
-  function shareWa(r: (typeof receipts)[0]) {
+  function shareWa(r: Receipt) {
     const c = customers.find((x) => x.id === r.customerId);
     const text = [
       `Satelkar's Logistics — payment received`,
@@ -121,6 +126,19 @@ function ReceiptsPage() {
       .filter(Boolean)
       .join("\n");
     openWhatsApp(c?.mobile, text);
+  }
+
+  function printInvoice(r: Receipt) {
+    const c = customers.find((x) => x.id === r.customerId);
+    const fleet = fleets.find((f) => f.id === r.fleetId);
+    const bank = banks.find((b) => b.id === r.bankAccountId);
+    printReceiptInvoice(
+      buildReceiptInvoiceData(r, {
+        customerMobile: c?.mobile || "",
+        fleetName: fleet?.name || "",
+        bankName: bank?.name || "",
+      }),
+    );
   }
 
   return (
@@ -300,9 +318,14 @@ function ReceiptsPage() {
           <Plus className="size-4" /> Save receipt
         </Button>
         {last ? (
-          <Button variant="outline" size="sm" onClick={() => shareWa(last)}>
-            WhatsApp last receipt
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => printInvoice(last)}>
+              <Printer className="size-3.5" /> Print invoice
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => shareWa(last)}>
+              WhatsApp last receipt
+            </Button>
+          </div>
         ) : null}
       </Card>
 
@@ -325,6 +348,14 @@ function ReceiptsPage() {
                 <div className="shrink-0 text-right">
                   <div className="font-medium tabular-nums text-success">{inr(r.amount)}</div>
                   <div className="mt-1 flex justify-end gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      title="Print invoice"
+                      onClick={() => printInvoice(r)}
+                    >
+                      <Printer className="size-3.5" />
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={() => shareWa(r)}>
                       WA
                     </Button>
