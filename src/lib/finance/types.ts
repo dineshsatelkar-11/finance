@@ -189,6 +189,39 @@ export type Expense = {
   createdAt: string;
 };
 
+export type InvoiceStatus = "unpaid" | "paid" | "cancelled";
+
+/** Customer billing invoice (before payment). Separate from Receipt (payment received). */
+export type Invoice = {
+  id: string;
+  /** Human-readable number e.g. INV-260917-A1B2 */
+  invoiceNo: string;
+  customerId: string;
+  customerName: string;
+  customerMobile: string;
+  invoiceDate: string;
+  dueDate: string;
+  /** Service / trip / period description */
+  description: string;
+  /** Amount before tax */
+  amount: number;
+  /** GST or other tax */
+  taxAmount: number;
+  /** amount + taxAmount */
+  totalAmount: number;
+  fleetId: string | null;
+  /** Period covered YYYY-MM */
+  forMonth: string;
+  status: InvoiceStatus;
+  paidDate: string;
+  paidMode: PayMode | "";
+  paidBankAccountId: string;
+  /** Linked receipt id when marked paid */
+  receiptId: string;
+  note: string;
+  createdAt: string;
+};
+
 export type FinanceState = {
   month: string;
   drivers: Driver[];
@@ -201,6 +234,7 @@ export type FinanceState = {
   vendors: Vendor[];
   customers: Customer[];
   receipts: Receipt[];
+  invoices: Invoice[];
   rentPayments: RentPayment[];
   attendances: Attendance[];
   rentWaivers: RentWaiver[];
