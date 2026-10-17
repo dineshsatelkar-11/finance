@@ -17,6 +17,7 @@ import { Route as PayoutsRouteImport } from './routes/payouts'
 import { Route as FleetsRouteImport } from './routes/fleets'
 import { Route as LoansRouteImport } from './routes/loans'
 import { Route as ReceiptsRouteImport } from './routes/receipts'
+import { Route as InvoicesRouteImport } from './routes/invoices'
 import { Route as RentRouteImport } from './routes/rent'
 import { Route as ManageDriversRouteImport } from './routes/manage-drivers'
 import { Route as StatementRouteImport } from './routes/statement'
@@ -61,6 +62,11 @@ const ReceiptsRoute = ReceiptsRouteImport.update({
   path: '/receipts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InvoicesRoute = InvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RentRoute = RentRouteImport.update({
   id: '/rent',
   path: '/rent',
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/fleets': typeof FleetsRoute
   '/loans': typeof LoansRoute
   '/receipts': typeof ReceiptsRoute
+  '/invoices': typeof InvoicesRoute
   '/rent': typeof RentRoute
   '/manage-drivers': typeof ManageDriversRoute
   '/statement': typeof StatementRoute
@@ -99,6 +106,7 @@ export interface FileRoutesByTo {
   '/fleets': typeof FleetsRoute
   '/loans': typeof LoansRoute
   '/receipts': typeof ReceiptsRoute
+  '/invoices': typeof InvoicesRoute
   '/rent': typeof RentRoute
   '/manage-drivers': typeof ManageDriversRoute
   '/statement': typeof StatementRoute
@@ -113,6 +121,7 @@ export interface FileRoutesById {
   '/fleets': typeof FleetsRoute
   '/loans': typeof LoansRoute
   '/receipts': typeof ReceiptsRoute
+  '/invoices': typeof InvoicesRoute
   '/rent': typeof RentRoute
   '/manage-drivers': typeof ManageDriversRoute
   '/statement': typeof StatementRoute
@@ -128,6 +137,7 @@ export interface FileRouteTypes {
     | '/fleets'
     | '/loans'
     | '/receipts'
+    | '/invoices'
     | '/rent'
     | '/manage-drivers'
     | '/statement'
@@ -141,6 +151,7 @@ export interface FileRouteTypes {
     | '/fleets'
     | '/loans'
     | '/receipts'
+    | '/invoices'
     | '/rent'
     | '/manage-drivers'
     | '/statement'
@@ -154,6 +165,7 @@ export interface FileRouteTypes {
     | '/fleets'
     | '/loans'
     | '/receipts'
+    | '/invoices'
     | '/rent'
     | '/manage-drivers'
     | '/statement'
@@ -168,6 +180,7 @@ export interface RootRouteChildren {
   FleetsRoute: typeof FleetsRoute
   LoansRoute: typeof LoansRoute
   ReceiptsRoute: typeof ReceiptsRoute
+  InvoicesRoute: typeof InvoicesRoute
   RentRoute: typeof RentRoute
   ManageDriversRoute: typeof ManageDriversRoute
   StatementRoute: typeof StatementRoute
@@ -231,6 +244,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReceiptsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invoices': {
+      id: '/invoices'
+      path: '/invoices'
+      fullPath: '/invoices'
+      preLoaderRoute: typeof InvoicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/rent': {
       id: '/rent'
       path: '/rent'
@@ -264,6 +284,7 @@ const rootRouteChildren: RootRouteChildren = {
   FleetsRoute: FleetsRoute,
   LoansRoute: LoansRoute,
   ReceiptsRoute: ReceiptsRoute,
+  InvoicesRoute: InvoicesRoute,
   RentRoute: RentRoute,
   ManageDriversRoute: ManageDriversRoute,
   StatementRoute: StatementRoute,
