@@ -9,6 +9,7 @@ import {
   Car,
   Landmark,
   HandCoins,
+  FileText,
   Building2,
   MoreHorizontal,
   Users,
@@ -36,6 +37,7 @@ const NAV = [
   { to: "/fleets", label: "Fleet", icon: Car, primary: false },
   { to: "/loans", label: "Loans", icon: Landmark, primary: false },
   { to: "/receipts", label: "Receipts", icon: HandCoins, primary: false },
+  { to: "/invoices", label: "Invoices", icon: FileText, primary: false },
   { to: "/rent", label: "Rent", icon: Building2, primary: false },
 ] as const;
 
