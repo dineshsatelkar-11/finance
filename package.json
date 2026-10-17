@@ -3,7 +3,7 @@
   "private": true,
   "sideEffects": false,
   "type": "module",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "overrides": {
     "nf3": "0.3.17",
     "@tanstack/start-server-core": "1.169.39"
