@@ -1,1 +1,215 @@
-PLACEHOLDER
+export type PayMode = "upi" | "cash" | "bank";
+
+export type DriverKind = "full" | "part";
+export type FleetKind = "tempo" | "route";
+export type PayoutKind =
+  | "salary"
+  | "advance"
+  | "return"
+  | "fine"
+  | "bonus"
+  | "extra_route";
+export type PayoutStatus = "pending" | "paid" | "failed";
+export type LoanStatus = "active" | "closed";
+
+export type LoanPaymentKind = "emi" | "interest" | "prepay" | "disbursement";
+
+export type Driver = {
+  id: string;
+  name: string;
+  mobile: string;
+  kind: DriverKind;
+  baseSalary: number;
+  dailyRate: number;
+  /**
+   * Opening balance for this driver (₹).
+   * Positive = company owes driver; negative = driver owes company.
+   */
+  openingBalance?: number;
+  active: boolean;
+  /** Canonical VPA stored on the driver — never only in a side map keyed by name. */
+  upiVpa: string;
+  upiPayeeName: string;
+  upiUpdatedAt: string | null;
+  /** Fleet this driver currently runs / rents (optional). */
+  fleetId: string | null;
+  note: string;
+};
+
+export type Fleet = {
+  id: string;
+  name: string;
+  regNo: string;
+  kind: FleetKind;
+  /** Monthly rent charged to the driver (0 if company-owned / route-only). */
+  monthlyRent: number;
+  /**
+   * When false, vehicle is route-only (no rent collected from driver).
+   * Missing on older data → treat as true if monthlyRent > 0.
+   */
+  chargesRent?: boolean;
+  active: boolean;
+  loanId: string | null;
+  note: string;
+};
+
+export type Loan = {
+  id: string;
+  name: string;
+  bank: string;
+  accountNo: string;
+  ifsc: string;
+  principal: number;
+  emiAmount: number;
+  emiDay: number;
+  totalEmis: number;
+  startDate: string;
+  endDate: string;
+  interestRate: number;
+  outstanding: number;
+  pendingEmis: number;
+  status: LoanStatus;
+  fleetId: string | null;
+  note: string;
+};
+
+export type LoanPayment = {
+  id: string;
+  loanId: string;
+  kind: LoanPaymentKind;
+  amount: number;
+  /** Principal portion of EMI (reduces outstanding). Optional for legacy rows. */
+  principal?: number;
+  /** Interest portion of EMI. Optional for legacy rows. */
+  interest?: number;
+  date: string;
+  mode: PayMode;
+  status: PayoutStatus;
+  bankAccountId: string;
+  note: string;
+  createdAt: string;
+};
+
+export type BankAccount = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  opening: number;
+};
+
+/** Internal move between company bank accounts. */
+export type BankTransfer = {
+  id: string;
+  fromBankId: string;
+  toBankId: string;
+  amount: number;
+  date: string;
+  note: string;
+  createdAt: string;
+};
+
+export type Vendor = {
+  id: string;
+  name: string;
+  upiVpa: string;
+  upiPayeeName: string;
+};
+
+export type Customer = {
+  id: string;
+  name: string;
+  upiVpa: string;
+  upiPayeeName: string;
+  note: string;
+};
+
+export type Expense = {
+  id: string;
+  category: string;
+  vendor: string;
+  amount: number;
+  date: string;
+  mode: PayMode;
+  status: PayoutStatus;
+  bankAccountId: string;
+  upiVpa: string;
+  fleetId: string | null;
+  note: string;
+  createdAt: string;
+};
+
+export type Receipt = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+  date: string;
+  mode: PayMode;
+  status: PayoutStatus;
+  bankAccountId: string;
+  fleetId: string | null;
+  note: string;
+  createdAt: string;
+};
+
+export type RentPayment = {
+  id: string;
+  fleetId: string;
+  driverId: string;
+  amount: number;
+  date: string;
+  forMonth: string;
+  mode: PayMode;
+  status: PayoutStatus;
+  note: string;
+  createdAt: string;
+};
+
+export type Attendance = {
+  id: string;
+  driverId: string;
+  month: string;
+  leaveDays: number;
+  note: string;
+};
+
+export type RentWaiver = {
+  id: string;
+  fleetId: string;
+  month: string;
+  breakdownDays: number;
+  amount: number;
+  note: string;
+};
+
+export type Payout = {
+  id: string;
+  driverId: string;
+  kind: PayoutKind;
+  amount: number;
+  date: string;
+  mode: PayMode;
+  status: PayoutStatus;
+  bankAccountId: string;
+  upiVpa: string;
+  note: string;
+  createdAt: string;
+};
+
+/** Full finance snapshot loaded/saved to Neon. */
+export type FinanceSnapshot = {
+  banks: BankAccount[];
+  fleets: Fleet[];
+  loans: Loan[];
+  drivers: Driver[];
+  vendors: Vendor[];
+  customers: Customer[];
+  payouts: Payout[];
+  expenses: Expense[];
+  receipts: Receipt[];
+  rentPayments: RentPayment[];
+  attendances: Attendance[];
+  rentWaivers: RentWaiver[];
+  loanPayments: LoanPayment[];
+  bankTransfers: BankTransfer[];
+};
