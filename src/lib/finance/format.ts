@@ -321,3 +321,42 @@ export function netSalaryPayable(
     deduction,
   }).net;
 }
+
+/**
+ * Split an EMI (or partial) payment into principal + interest using reducing-balance.
+ * Interest ≈ outstanding × (annualRate% / 12). Principal = amount − interest (capped at outstanding).
+ * Outstanding must only be reduced by the principal portion.
+ */
+export function splitLoanPayment(
+  outstanding: number,
+  amount: number,
+  annualRatePct: number,
+): { principal: number; interest: number } {
+  const bal = Math.max(0, Number(outstanding) || 0);
+  const amt = Math.max(0, Math.round((Number(amount) || 0) * 100) / 100);
+  if (!(amt > 0)) return { principal: 0, interest: 0 };
+  const monthlyRate = (Number(annualRatePct) || 0) / 12 / 100;
+  let interest = Math.round(bal * monthlyRate * 100) / 100;
+  if (interest < 0) interest = 0;
+  if (interest > amt) interest = amt;
+  let principal = Math.round((amt - interest) * 100) / 100;
+  if (principal > bal) {
+    principal = bal;
+    interest = Math.round((amt - principal) * 100) / 100;
+  }
+  if (principal < 0) principal = 0;
+  return { principal, interest };
+}
+
+/** Principal used to change loan outstanding (falls back to full amount for legacy rows). */
+export function loanPrincipalApplied(p: {
+  amount: number;
+  principal?: number;
+  kind: string;
+}): number {
+  if (p.kind !== "emi" && p.kind !== "prepay") return 0;
+  if (p.principal != null && Number.isFinite(p.principal)) {
+    return Math.max(0, Math.round(Number(p.principal) * 100) / 100);
+  }
+  return Math.max(0, Math.round(Number(p.amount) * 100) / 100);
+}
