@@ -196,8 +196,26 @@ export type Payout = {
   createdAt: string;
 };
 
-/** Full finance snapshot loaded/saved to Neon. */
-export type FinanceSnapshot = {
+export type InvoiceStatus = "unpaid" | "paid" | "cancelled";
+
+/** Customer billing invoice (before payment). Separate from Receipt (payment received). */
+export type Invoice = {
+  id: string;
+  invoiceNo: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+  invoiceDate: string;
+  dueDate: string;
+  description: string;
+  status: InvoiceStatus;
+  receiptId: string | null;
+  note: string;
+  createdAt: string;
+};
+
+export type FinanceState = {
+  month: string;
   banks: BankAccount[];
   fleets: Fleet[];
   loans: Loan[];
@@ -207,9 +225,15 @@ export type FinanceSnapshot = {
   payouts: Payout[];
   expenses: Expense[];
   receipts: Receipt[];
+  invoices: Invoice[];
   rentPayments: RentPayment[];
   attendances: Attendance[];
   rentWaivers: RentWaiver[];
   loanPayments: LoanPayment[];
   bankTransfers: BankTransfer[];
+};
+
+/** Full finance snapshot loaded/saved to Neon. */
+export type FinanceSnapshot = Omit<FinanceState, "month"> & {
+  deletedIds?: string[];
 };
