@@ -56,10 +56,15 @@ export function buildSalarySlipData(input: {
   rentOffDays?: number;
   slipAmountOverride?: number;
   excludePayoutId?: string;
+  /** Prefer this saved value (from note at post time) over runtime calc. */
+  savedBalanceBefore?: number | null;
 }): SalarySlipData {
   const payoutsForBefore = input.excludePayoutId
     ? input.payouts.filter((p) => p.id !== input.excludePayoutId)
     : input.payouts;
+
+  // Advances / balance only through the slip date (not later payouts).
+  const throughDate = String(input.date || "").slice(0, 10) || undefined;
 
   const settle = salarySettlement({
     driver: input.driver,
@@ -70,6 +75,7 @@ export function buildSalarySlipData(input: {
     bonus: input.bonus || 0,
     deduction: input.deduction || 0,
     rentOffDays: input.rentOffDays || 0,
+    throughDate,
   });
   const dim = daysInMonth(input.month);
   const leave = Math.max(0, Math.min(dim, Math.floor(input.leaveDays) || 0));
@@ -86,8 +92,11 @@ export function buildSalarySlipData(input: {
       ? input.slipAmountOverride
       : Math.round((settle.gross + settle.bonus - settle.rent - settle.deduction) * 100) / 100;
 
-  // balanceBefore = advance / balance BEFORE this salary slip is applied
-  const balanceBefore = Math.round(settle.balance * 100) / 100;
+  // Prefer value saved at post time so historical slips stay stable.
+  const balanceBefore =
+    input.savedBalanceBefore != null && Number.isFinite(input.savedBalanceBefore)
+      ? Math.round(Number(input.savedBalanceBefore) * 100) / 100
+      : Math.round(settle.balance * 100) / 100;
   const balanceAfter = Math.round((balanceBefore + slip) * 100) / 100;
 
   return {
@@ -364,11 +373,44 @@ function buildSimplePdf(lines: string[]): Uint8Array {
   return new TextEncoder().encode(pdf);
 }
 
+/** Build the note string stored on the salary payout row (persisted snapshot). */
+export function salarySlipNote(data: {
+  month: string;
+  leaveDays: number;
+  rentOffDays?: number;
+  bonus?: number;
+  deduction?: number;
+  rent?: number;
+  slipAmount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+}): string {
+  const parts = [
+    `Salary slip ${data.month}`,
+    `leave ${data.leaveDays}`,
+    data.rentOffDays && data.rentOffDays > 0 ? `rentOff ${data.rentOffDays}` : null,
+    data.bonus && data.bonus > 0 ? `bonus ${data.bonus}` : null,
+    data.deduction && data.deduction > 0 ? `deduct ${data.deduction}` : null,
+    data.rent && data.rent > 0 ? `rent −${data.rent}` : null,
+    `balBefore ${data.balanceBefore}`,
+    `slip ${data.slipAmount}`,
+    `after bal ${data.balanceAfter}`,
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
 export function resolveSalarySlipMeta(
   payout: Payout,
   driverId: string,
   attendances: { driverId: string; month: string; leaveDays: number }[],
-): { month: string; leaveDays: number; bonus: number; deduction: number; rentOffDays: number } {
+): {
+  month: string;
+  leaveDays: number;
+  bonus: number;
+  deduction: number;
+  rentOffDays: number;
+  savedBalanceBefore: number | null;
+} {
   const note = String(payout.note || "");
   const payYm = String(payout.date || "").slice(0, 7);
 
@@ -424,12 +466,19 @@ export function resolveSalarySlipMeta(
     }
   }
 
+  const balBeforeMatch = note.match(/balBefore\s+(-?[0-9]+(?:\.[0-9]+)?)/i);
+  const savedBalanceBefore =
+    balBeforeMatch && Number.isFinite(Number(balBeforeMatch[1]))
+      ? Math.round(Number(balBeforeMatch[1]) * 100) / 100
+      : null;
+
   return {
     month,
     leaveDays: Math.max(0, leaveDays || 0),
     bonus,
     deduction,
     rentOffDays,
+    savedBalanceBefore,
   };
 }
 
@@ -456,5 +505,6 @@ export function slipFromSalaryPayout(
     rentOffDays: meta.rentOffDays,
     slipAmountOverride: payout.amount,
     excludePayoutId: payout.id,
+    savedBalanceBefore: meta.savedBalanceBefore,
   });
 }
