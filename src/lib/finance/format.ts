@@ -208,20 +208,27 @@ export function driverTempoRent(
  * Running balance vs driver.
  * Positive = company still owes driver; negative = driver owes company / over-advanced.
  * - Opening − advances + returns − fines + salary slips (paid)
+ * Optional throughDate: only count paid rows with date <= that day (for salary slip as-of).
  */
 export function driverBalance(
   driver: { id: string; kind?: string; baseSalary?: number; dailyRate?: number; openingBalance?: number },
   _month: string,
   payouts: { driverId: string; kind: string; amount: number; status: string; date: string }[],
   _leaveDays = 0,
+  /** Only count paid rows with date <= this (YYYY-MM-DD). Omit = all history. */
+  throughDate?: string,
 ) {
   const opening = Number(driver.openingBalance) || 0;
+  const through =
+    throughDate && /^\d{4}-\d{2}-\d{2}$/.test(throughDate) ? throughDate : null;
   let advances = 0;
   let fine = 0;
   let returned = 0;
   let salaryAccrued = 0;
   for (const p of payouts) {
     if (p.driverId !== driver.id || p.status !== "paid") continue;
+    const d = String(p.date || "").slice(0, 10);
+    if (through && d && d > through) continue;
     if (p.kind === "fine") fine += p.amount;
     else if (p.kind === "return") returned += p.amount;
     else if (p.kind === "advance") advances += p.amount;
@@ -246,6 +253,8 @@ export type SalarySettlementInput = {
   bonus?: number;
   deduction?: number;
   rentOffDays?: number;
+  /** Balance / advances only through this date (slip date). */
+  throughDate?: string;
 };
 
 export type SalarySettlement = {
@@ -253,7 +262,7 @@ export type SalarySettlement = {
   bonus: number;
   /** Same-month paid advances (info only). */
   advances: number;
-  /** Running balance till today. */
+  /** Running balance till throughDate (or all history). */
   balance: number;
   rentFull: number;
   rent: number;
@@ -266,12 +275,13 @@ export type SalarySettlement = {
 /**
  * Month-end settlement.
  * Net = gross + bonus + balance − tempo rent − deduction
- * Balance already includes all advances (salary paid early as advance).
+ * Balance already includes advances through throughDate (salary paid early as advance).
  */
 export function salarySettlement(input: SalarySettlementInput): SalarySettlement {
   const gross = suggestedSalary(input.driver, input.leaveDays, input.month);
-  const advances = monthAdvances(input.driver.id, input.month, input.payouts);
-  const balance = driverBalance(input.driver, input.month, input.payouts);
+  const through = input.throughDate;
+  const advances = monthAdvances(input.driver.id, input.month, input.payouts, through);
+  const balance = driverBalance(input.driver, input.month, input.payouts, 0, through);
   const dim = daysInMonth(input.month);
   const rentInfo = driverTempoRent(input.driver, input.fleets, {
     breakdownDays: input.rentOffDays || 0,
