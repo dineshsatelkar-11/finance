@@ -14,7 +14,7 @@ import {
   salarySettlement,
   todayISO,
 } from "@/lib/finance/format";
-import { buildSalarySlipData } from "@/lib/finance/salary-slip";
+import { buildSalarySlipData, salarySlipNote } from "@/lib/finance/salary-slip";
 import { flushFinanceSave } from "@/lib/finance/sync";
 import type { PayMode, PayoutKind } from "@/lib/finance/types";
 
@@ -100,6 +100,7 @@ export function PaySheet({
         bonus: bonusN,
         deduction: deductionN,
         rentOffDays: rentOffN,
+        throughDate: date, // advances only before / on slip date
       })
     : null;
   const salaryGross = settle?.gross ?? 0;
@@ -117,17 +118,17 @@ export function PaySheet({
     setAmount(String(Math.max(0, slip)));
     const after = Math.round((balanceTillToday + slip) * 100) / 100;
     setNote(
-      [
-        `Salary slip ${salaryForMonth}`,
-        `leave ${leaveN}`,
-        rentOffN > 0 ? `rentOff ${rentOffN}` : null,
-        bonusN > 0 ? `bonus ${bonusN}` : null,
-        settle.rent > 0 ? `rent −${settle.rent}` : null,
-        `slip ${slip}`,
-        `after bal ${after}`,
-      ]
-        .filter(Boolean)
-        .join(" · "),
+      salarySlipNote({
+        month: salaryForMonth,
+        leaveDays: leaveN,
+        rentOffDays: rentOffN,
+        bonus: bonusN,
+        deduction: deductionN,
+        rent: settle.rent,
+        slipAmount: slip,
+        balanceBefore: balanceTillToday,
+        balanceAfter: after,
+      }),
     );
   }
 
@@ -163,6 +164,34 @@ export function PaySheet({
     }
     setPosting(true);
     try {
+      const savedNote =
+        note ||
+        salarySlipNote({
+          month: salaryForMonth,
+          leaveDays: leaveN,
+          rentOffDays: rentOffN,
+          bonus: bonusN,
+          deduction: deductionN,
+          rent: data.rent,
+          slipAmount: slip,
+          balanceBefore: data.balanceBefore,
+          balanceAfter: data.balanceAfter,
+        });
+      // Ensure balBefore is always present so later reprints use saved value.
+      const finalNote =
+        /balBefore\s+-?[0-9]/.test(savedNote)
+          ? savedNote
+          : salarySlipNote({
+              month: salaryForMonth,
+              leaveDays: leaveN,
+              rentOffDays: rentOffN,
+              bonus: bonusN,
+              deduction: deductionN,
+              rent: data.rent,
+              slipAmount: slip,
+              balanceBefore: data.balanceBefore,
+              balanceAfter: data.balanceAfter,
+            });
       const rec = recordPayout({
         driverId: driver.id,
         kind: "salary",
@@ -171,9 +200,7 @@ export function PaySheet({
         mode: "cash",
         bankAccountId: bankId || defaultBankId(),
         upiVpa: "",
-        note:
-          note ||
-          `Salary slip ${salaryForMonth} · leave ${leaveN} · rentOff ${rentOffN} · slip ${slip}`,
+        note: finalNote,
         status: "paid",
       });
       if (!rec.ok) {
@@ -401,7 +428,14 @@ export function PaySheet({
                 </div>
                 <div>
                   <Label>Date</Label>
-                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                  <Input
+                    type="date"
+                    value={date}
+                    onChange={(e) => {
+                      setDate(e.target.value);
+                      setTimeout(applySalarySlip, 0);
+                    }}
+                  />
                 </div>
                 <div>
                   <Label>Note</Label>
