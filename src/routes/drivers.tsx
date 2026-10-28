@@ -51,6 +51,27 @@ function balanceDelta(kind: string, amount: number): number {
   return 0;
 }
 
+/**
+ * Same calendar day + same createdAt (statement seeds): apply neutrals first,
+ * then credits, then debits — so Extra route and Advance on one day get different After.
+ */
+function kindChronoRank(kind: string): number {
+  if (kind === "extra_route" || kind === "bonus") return 0;
+  if (kind === "return" || kind === "salary") return 1;
+  if (kind === "advance" || kind === "fine") return 2;
+  return 1;
+}
+
+function chronoCmp(a: Payout, b: Payout): number {
+  const byDate = a.date.localeCompare(b.date);
+  if (byDate) return byDate;
+  const byCreated = (a.createdAt || "").localeCompare(b.createdAt || "");
+  if (byCreated) return byCreated;
+  const byKind = kindChronoRank(a.kind) - kindChronoRank(b.kind);
+  if (byKind) return byKind;
+  return a.id.localeCompare(b.id);
+}
+
 function DriversPage() {
   const month = useFinance((s) => s.month);
   const drivers = useFinance((s) => s.drivers);
@@ -72,12 +93,12 @@ function DriversPage() {
     return payouts
       .filter((p) => p.driverId === selectedDriverId)
       .slice()
-      .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || "").localeCompare(a.createdAt || ""));
+      .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || "").localeCompare(a.createdAt || "") || kindChronoRank(b.kind) - kindChronoRank(a.kind) || b.id.localeCompare(a.id));
   }, [payouts, selectedDriverId]);
 
   /**
    * Running balance AFTER each transaction (chronological, oldest → newest).
-   * Same-day rows get different balances when ordered by createdAt.
+   * Same-day statement rows: extra_route before advance so After values differ.
    */
   const balAfterById = useMemo(() => {
     const map = new Map<string, number>();
@@ -88,17 +109,13 @@ function DriversPage() {
     const chrono = payouts
       .filter((p) => p.driverId === selectedDriverId)
       .slice()
-      .sort(
-        (a, b) =>
-          a.date.localeCompare(b.date) || (a.createdAt || "").localeCompare(b.createdAt || "") || a.id.localeCompare(b.id),
-      );
+      .sort(chronoCmp);
 
     let bal = Math.round((Number(d.openingBalance) || 0) * 100) / 100;
     for (const p of chrono) {
       if (p.status === "paid") {
         bal = Math.round((bal + balanceDelta(p.kind, p.amount)) * 100) / 100;
       }
-      // Show balance after this row (unpaid leaves bal unchanged)
       map.set(p.id, bal);
     }
     return map;
@@ -143,6 +160,7 @@ function DriversPage() {
             const net = netSalaryPayable(d, leave, month, payouts);
             const balClass = bal < 0 ? "text-warn" : bal > 0 ? "text-ink" : "text-muted";
             const selected = selectedDriverId === d.id;
+            const opening = Math.round((Number(d.openingBalance) || 0) * 100) / 100;
             return (
               <Card
                 key={d.id}
@@ -171,6 +189,9 @@ function DriversPage() {
                           ? "Advance / driver owes · "
                           : "Settled · "}
                       tap to {selected ? "close" : "show"} transactions
+                    </p>
+                    <p className="text-[11px] text-muted tabular-nums">
+                      Opening {opening < 0 ? `−${inr(Math.abs(opening))}` : inr(opening)}
                     </p>
                     {gross > 0 ? (
                       <p className="mt-1 text-[11px] text-muted tabular-nums">
