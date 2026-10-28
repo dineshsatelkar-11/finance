@@ -42,6 +42,15 @@ function kindLabel(kind: string) {
   }
 }
 
+/** Balance change for one paid payout (same rules as driverBalance). */
+function balanceDelta(kind: string, amount: number): number {
+  const a = Number(amount) || 0;
+  if (kind === "advance" || kind === "fine") return -a;
+  if (kind === "return" || kind === "salary") return +a;
+  // extra_route, bonus, etc. do not affect running balance
+  return 0;
+}
+
 function DriversPage() {
   const month = useFinance((s) => s.month);
   const drivers = useFinance((s) => s.drivers);
@@ -57,6 +66,7 @@ function DriversPage() {
 
   const active = drivers.filter((d) => d.active);
 
+  /** Newest-first list for the open driver. */
   const driverTx = useMemo(() => {
     if (!selectedDriverId) return [] as Payout[];
     return payouts
@@ -64,6 +74,35 @@ function DriversPage() {
       .slice()
       .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || "").localeCompare(a.createdAt || ""));
   }, [payouts, selectedDriverId]);
+
+  /**
+   * Running balance AFTER each transaction (chronological, oldest → newest).
+   * Same-day rows get different balances when ordered by createdAt.
+   */
+  const balAfterById = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!selectedDriverId) return map;
+    const d = drivers.find((x) => x.id === selectedDriverId);
+    if (!d) return map;
+
+    const chrono = payouts
+      .filter((p) => p.driverId === selectedDriverId)
+      .slice()
+      .sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) || (a.createdAt || "").localeCompare(b.createdAt || "") || a.id.localeCompare(b.id),
+      );
+
+    let bal = Math.round((Number(d.openingBalance) || 0) * 100) / 100;
+    for (const p of chrono) {
+      if (p.status === "paid") {
+        bal = Math.round((bal + balanceDelta(p.kind, p.amount)) * 100) / 100;
+      }
+      // Show balance after this row (unpaid leaves bal unchanged)
+      map.set(p.id, bal);
+    }
+    return map;
+  }, [payouts, selectedDriverId, drivers]);
 
   async function deleteTx(p: Payout) {
     if (!window.confirm("Delete this transaction?")) return;
@@ -189,11 +228,7 @@ function DriversPage() {
                             const isIn = p.kind === "return";
                             const isNeutral = p.kind === "extra_route" || p.kind === "bonus";
                             const isSalary = p.kind === "salary";
-                            const day = String(p.date || "").slice(0, 10);
-                            const balAtDay =
-                              day && /^\d{4}-\d{2}-\d{2}$/.test(day)
-                                ? driverBalance(d, month, payouts, 0, day)
-                                : null;
+                            const after = balAfterById.get(p.id);
                             return (
                               <li key={p.id} className="flex items-center justify-between gap-2 py-2.5 text-sm">
                                 <div className="min-w-0 flex-1">
@@ -202,18 +237,18 @@ function DriversPage() {
                                     {shortDate(p.date)} · {p.status}
                                     {p.note ? ` · ${p.note}` : ""}
                                   </div>
-                                  {balAtDay != null ? (
+                                  {after != null ? (
                                     <div
                                       className={cn(
                                         "mt-0.5 text-[11px] tabular-nums",
-                                        balAtDay < 0 ? "text-warn" : balAtDay > 0 ? "text-muted" : "text-subtle",
+                                        after < 0 ? "text-warn" : after > 0 ? "text-muted" : "text-subtle",
                                       )}
                                     >
-                                      Bal on {shortDate(day)}:{" "}
-                                      {balAtDay < 0
-                                        ? `−${inr(Math.abs(balAtDay))} (owes)`
-                                        : balAtDay > 0
-                                          ? `${inr(balAtDay)} (company owes)`
+                                      After:{" "}
+                                      {after < 0
+                                        ? `−${inr(Math.abs(after))} (owes)`
+                                        : after > 0
+                                          ? `${inr(after)} (company owes)`
                                           : inr(0)}
                                     </div>
                                   ) : null}
