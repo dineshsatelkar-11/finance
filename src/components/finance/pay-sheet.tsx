@@ -100,12 +100,11 @@ export function PaySheet({
         bonus: bonusN,
         deduction: deductionN,
         rentOffDays: rentOffN,
-        throughDate: date, // advances only before / on slip date
+        throughDate: date,
       })
     : null;
   const salaryGross = settle?.gross ?? 0;
   const balanceTillToday = settle?.balance ?? 0;
-  const advancesBefore = settle?.advances ?? 0;
   const tempoRent = settle?.rent ?? 0;
   const rentFleetName = settle?.rentFleetName ?? null;
 
@@ -180,9 +179,8 @@ export function PaySheet({
           balanceAfter: data.balanceAfter,
           advancesBefore: data.advancesBefore,
         });
-      // Ensure balBefore / advBefore present so later reprints use saved values.
       const finalNote =
-        /balBefore\s+-?[0-9]/.test(savedNote) && /advBefore\s+[0-9]/.test(savedNote)
+        /balBefore\s+-?[0-9]/.test(savedNote)
           ? savedNote
           : salarySlipNote({
               month: salaryForMonth,
@@ -410,15 +408,11 @@ export function PaySheet({
                   <div className="flex justify-between">
                     <span className="text-muted">Advance before salary</span>
                     <span className="tabular-nums">
-                      {advancesBefore > 0 ? `− ${inr(advancesBefore)}` : "—"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted">Balance before slip</span>
-                    <span className="tabular-nums">
                       {balanceTillToday < 0
                         ? `− ${inr(Math.abs(balanceTillToday))}`
-                        : inr(balanceTillToday)}
+                        : balanceTillToday > 0
+                          ? inr(balanceTillToday)
+                          : "—"}
                     </span>
                   </div>
                   {tempoRent > 0 ? (
@@ -436,8 +430,8 @@ export function PaySheet({
                     </span>
                   </div>
                   <p className="text-[11px] text-muted">
-                    Advances = paid advances in salary month up to slip date. Slip amount does not
-                    deduct advances; balance after = balance before + slip.
+                    Advance before salary = balance before this slip (opening − advances + returns
+                    − fines + prior salary, through slip date). After = before + slip amount.
                   </p>
                 </div>
                 <div>
