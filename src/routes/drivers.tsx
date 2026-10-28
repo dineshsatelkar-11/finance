@@ -189,6 +189,11 @@ function DriversPage() {
                             const isIn = p.kind === "return";
                             const isNeutral = p.kind === "extra_route" || p.kind === "bonus";
                             const isSalary = p.kind === "salary";
+                            const day = String(p.date || "").slice(0, 10);
+                            const balAtDay =
+                              day && /^\d{4}-\d{2}-\d{2}$/.test(day)
+                                ? driverBalance(d, month, payouts, 0, day)
+                                : null;
                             return (
                               <li key={p.id} className="flex items-center justify-between gap-2 py-2.5 text-sm">
                                 <div className="min-w-0 flex-1">
@@ -197,6 +202,21 @@ function DriversPage() {
                                     {shortDate(p.date)} · {p.status}
                                     {p.note ? ` · ${p.note}` : ""}
                                   </div>
+                                  {balAtDay != null ? (
+                                    <div
+                                      className={cn(
+                                        "mt-0.5 text-[11px] tabular-nums",
+                                        balAtDay < 0 ? "text-warn" : balAtDay > 0 ? "text-muted" : "text-subtle",
+                                      )}
+                                    >
+                                      Bal on {shortDate(day)}:{" "}
+                                      {balAtDay < 0
+                                        ? `−${inr(Math.abs(balAtDay))} (owes)`
+                                        : balAtDay > 0
+                                          ? `${inr(balAtDay)} (company owes)`
+                                          : inr(0)}
+                                    </div>
+                                  ) : null}
                                 </div>
                                 <div className="flex shrink-0 items-center gap-1.5">
                                   <div
