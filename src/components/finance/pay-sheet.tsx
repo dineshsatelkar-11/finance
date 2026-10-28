@@ -105,6 +105,7 @@ export function PaySheet({
     : null;
   const salaryGross = settle?.gross ?? 0;
   const balanceTillToday = settle?.balance ?? 0;
+  const advancesBefore = settle?.advances ?? 0;
   const tempoRent = settle?.rent ?? 0;
   const rentFleetName = settle?.rentFleetName ?? null;
 
@@ -128,6 +129,7 @@ export function PaySheet({
         slipAmount: slip,
         balanceBefore: balanceTillToday,
         balanceAfter: after,
+        advancesBefore: settle.advances,
       }),
     );
   }
@@ -176,10 +178,11 @@ export function PaySheet({
           slipAmount: slip,
           balanceBefore: data.balanceBefore,
           balanceAfter: data.balanceAfter,
+          advancesBefore: data.advancesBefore,
         });
-      // Ensure balBefore is always present so later reprints use saved value.
+      // Ensure balBefore / advBefore present so later reprints use saved values.
       const finalNote =
-        /balBefore\s+-?[0-9]/.test(savedNote)
+        /balBefore\s+-?[0-9]/.test(savedNote) && /advBefore\s+[0-9]/.test(savedNote)
           ? savedNote
           : salarySlipNote({
               month: salaryForMonth,
@@ -191,6 +194,7 @@ export function PaySheet({
               slipAmount: slip,
               balanceBefore: data.balanceBefore,
               balanceAfter: data.balanceAfter,
+              advancesBefore: data.advancesBefore,
             });
       const rec = recordPayout({
         driverId: driver.id,
@@ -258,7 +262,6 @@ export function PaySheet({
     if (id) {
       setPayoutStatus(id, "paid");
     }
-    // Close sheet first so UI is not stuck waiting on cloud
     setPendingId(null);
     setStep("form");
     onOpenChange(false);
@@ -341,6 +344,7 @@ export function PaySheet({
                       setSalaryForMonth(ym);
                       const att = attendances.find((a) => a.driverId === id && a.month === ym);
                       setLeaveDays(String(att?.leaveDays ?? 0));
+                      setTimeout(applySalarySlip, 0);
                     }}
                   >
                     <SelectTrigger>
@@ -405,7 +409,17 @@ export function PaySheet({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted">Advance before salary</span>
-                    <span className="tabular-nums">{inr(balanceTillToday)}</span>
+                    <span className="tabular-nums">
+                      {advancesBefore > 0 ? `− ${inr(advancesBefore)}` : "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted">Balance before slip</span>
+                    <span className="tabular-nums">
+                      {balanceTillToday < 0
+                        ? `− ${inr(Math.abs(balanceTillToday))}`
+                        : inr(balanceTillToday)}
+                    </span>
                   </div>
                   {tempoRent > 0 ? (
                     <div className="flex justify-between">
@@ -422,8 +436,8 @@ export function PaySheet({
                     </span>
                   </div>
                   <p className="text-[11px] text-muted">
-                    Slip adds to balance. Advance before {inr(balanceTillToday)} → after{" "}
-                    {inr(balanceTillToday + (settle ? salarySlipAmount(settle) : 0))}
+                    Advances = paid advances in salary month up to slip date. Slip amount does not
+                    deduct advances; balance after = balance before + slip.
                   </p>
                 </div>
                 <div>
