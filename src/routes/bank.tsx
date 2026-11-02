@@ -1,3 +1,2 @@
-import { useMemo, useState } from "react";
-// temporary stub while restoring
+const x = <Button>test</Button>;
 export const Route = { component: () => null };
