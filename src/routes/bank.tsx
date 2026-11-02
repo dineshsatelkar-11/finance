@@ -1,2 +1,1 @@
-const x = <Button>test</Button>;
-export const Route = { component: () => null };
+@/tmp/bank_final.tsx
