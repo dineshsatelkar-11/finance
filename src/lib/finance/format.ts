@@ -148,25 +148,6 @@ export function monthAdvances(
   return Math.round(sum * 100) / 100;
 }
 
-/** Sum of paid extra_route (unpaid extra work) for a driver, optionally through a date. */
-export function monthExtraWork(
-  driverId: string,
-  payouts: { driverId: string; kind: string; amount: number; status: string; date: string }[],
-  throughDate?: string,
-) {
-  const through =
-    throughDate && /^\d{4}-\d{2}-\d{2}$/.test(throughDate) ? throughDate : null;
-  let sum = 0;
-  for (const p of payouts) {
-    if (p.driverId !== driverId || p.status !== "paid") continue;
-    if (p.kind !== "extra_route") continue;
-    const d = String(p.date || "").slice(0, 10);
-    if (through && d && d > through) continue;
-    sum += Number(p.amount) || 0;
-  }
-  return Math.round(sum * 100) / 100;
-}
-
 export function effectiveRent(
   monthlyRent: number,
   breakdownDays: number,
@@ -217,15 +198,16 @@ export function driverTempoRent(
  * Running balance vs driver.
  * Positive = company still owes driver; negative = driver owes company / over-advanced.
  * - Opening − advances − fines + returns + salary slips (paid)
- * Extra work (extra_route) is NOT in running balance — it is deducted only at salary settlement.
- * Optional throughDate: only count paid rows with date <= that day (for salary slip as-of).
+ * - Unpaid extra work (extra_route + pending) → company owes (+amount)
+ * - Paid extra work (extra_route + paid) → no balance impact (already paid)
+ * Optional throughDate: only count rows with date <= that day.
  */
 export function driverBalance(
   driver: { id: string; kind?: string; baseSalary?: number; dailyRate?: number; openingBalance?: number },
   _month: string,
   payouts: { driverId: string; kind: string; amount: number; status: string; date: string }[],
   _leaveDays = 0,
-  /** Only count paid rows with date <= this (YYYY-MM-DD). Omit = all history. */
+  /** Only count rows with date <= this (YYYY-MM-DD). Omit = all history. */
   throughDate?: string,
 ) {
   const opening = Number(driver.openingBalance) || 0;
@@ -235,17 +217,24 @@ export function driverBalance(
   let fine = 0;
   let returned = 0;
   let salaryAccrued = 0;
+  let unpaidExtra = 0;
   for (const p of payouts) {
-    if (p.driverId !== driver.id || p.status !== "paid") continue;
+    if (p.driverId !== driver.id) continue;
     const d = String(p.date || "").slice(0, 10);
     if (through && d && d > through) continue;
+    // Unpaid extra work: company still owes the driver
+    if (p.kind === "extra_route" && p.status === "pending") {
+      unpaidExtra += Number(p.amount) || 0;
+      continue;
+    }
+    if (p.status !== "paid") continue;
     if (p.kind === "fine") fine += p.amount;
     else if (p.kind === "return") returned += p.amount;
     else if (p.kind === "advance") advances += p.amount;
     else if (p.kind === "salary") salaryAccrued += p.amount;
-    // extra_route intentionally ignored here — applied only in salarySettlement
+    // paid extra_route: already paid → no balance impact
   }
-  return Math.round((opening - advances + returned - fine + salaryAccrued) * 100) / 100;
+  return Math.round((opening - advances + returned - fine + salaryAccrued + unpaidExtra) * 100) / 100;
 }
 
 export type SalarySettlementInput = {
@@ -273,10 +262,8 @@ export type SalarySettlement = {
   bonus: number;
   /** Same-month paid advances (info only). */
   advances: number;
-  /** Running balance till throughDate (or all history). Does NOT include extra work. */
+  /** Running balance till throughDate (includes unpaid extra work as company-owe). */
   balance: number;
-  /** Paid extra_route amounts (deducted from net). */
-  extraWork: number;
   rentFull: number;
   rent: number;
   rentOffDays: number;
@@ -287,15 +274,15 @@ export type SalarySettlement = {
 
 /**
  * Month-end settlement.
- * Net = gross + bonus + balance − extra work − tempo rent − deduction
- * Extra work is recorded as unpaid extra_route and deducted only here (not in running balance).
+ * Net = gross + bonus + balance − tempo rent − deduction
+ * Balance already includes unpaid extra work (company owes).
+ * Paid extra work does not affect balance or net.
  */
 export function salarySettlement(input: SalarySettlementInput): SalarySettlement {
   const gross = suggestedSalary(input.driver, input.leaveDays, input.month);
   const through = input.throughDate;
   const advances = monthAdvances(input.driver.id, input.month, input.payouts, through);
   const balance = driverBalance(input.driver, input.month, input.payouts, 0, through);
-  const extraWork = monthExtraWork(input.driver.id, input.payouts, through);
   const dim = daysInMonth(input.month);
   const rentInfo = driverTempoRent(input.driver, input.fleets, {
     breakdownDays: input.rentOffDays || 0,
@@ -304,13 +291,12 @@ export function salarySettlement(input: SalarySettlementInput): SalarySettlement
   const bonus = Math.max(0, Math.round((Number(input.bonus) || 0) * 100) / 100);
   const deduction = Math.max(0, Math.round((Number(input.deduction) || 0) * 100) / 100);
   const rent = rentInfo.amount;
-  const net = Math.round((gross + bonus + balance - extraWork - rent - deduction) * 100) / 100;
+  const net = Math.round((gross + bonus + balance - rent - deduction) * 100) / 100;
   return {
     gross,
     bonus,
     advances,
     balance,
-    extraWork,
     rentFull: rentInfo.fullRent,
     rent,
     rentOffDays: rentInfo.offDays,
