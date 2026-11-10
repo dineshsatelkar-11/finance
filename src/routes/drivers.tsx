@@ -1,10 +1,14 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Trash2, Wallet, FileText } from "lucide-react";
+import { Trash2, Wallet, FileText, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PaySheet } from "@/components/finance/pay-sheet";
 import { useFinance } from "@/lib/finance/store";
 import {
@@ -15,9 +19,9 @@ import {
   shortDate,
   suggestedSalary,
 } from "@/lib/finance/format";
-import { rememberDeletedId } from "@/lib/finance/sync";
+import { flushFinanceSave, rememberDeletedId } from "@/lib/finance/sync";
 import { printSalarySlip, slipFromSalaryPayout } from "@/lib/finance/salary-slip";
-import type { Payout } from "@/lib/finance/types";
+import type { Payout, PayoutStatus } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/drivers")({ component: DriversPage });
@@ -85,10 +89,21 @@ function DriversPage() {
   const fleets = useFinance((s) => s.fleets);
   const attendances = useFinance((s) => s.attendances);
   const removePayout = useFinance((s) => s.removePayout);
+  const updatePayout = useFinance((s) => s.updatePayout);
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [payDriverId, setPayDriverId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Edit dialog state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [editStatus, setEditStatus] = useState<PayoutStatus>("paid");
+  const [editKind, setEditKind] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const active = drivers.filter((d) => d.active);
 
@@ -123,6 +138,42 @@ function DriversPage() {
     return map;
   }, [payouts, selectedDriverId, drivers]);
 
+  function openEdit(p: Payout) {
+    setEditId(p.id);
+    setEditAmount(String(p.amount));
+    setEditDate(String(p.date || "").slice(0, 10));
+    setEditNote(p.note || "");
+    setEditStatus(p.status as PayoutStatus);
+    setEditKind(p.kind);
+    setEditOpen(true);
+  }
+
+  async function saveEdit() {
+    if (!editId) return;
+    const amt = parseFloat(editAmount);
+    if (!(amt > 0)) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    setSaving(true);
+    try {
+      updatePayout(editId, {
+        amount: Math.round(amt * 100) / 100,
+        date: editDate,
+        note: editNote.trim(),
+        status: editStatus,
+      });
+      setEditOpen(false);
+      toast.success("Updated");
+      const save = await flushFinanceSave();
+      if (!save.ok) {
+        toast.error(save.error || "Saved on phone but cloud failed");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function deleteTx(p: Payout) {
     if (!window.confirm("Delete this transaction?")) return;
     setDeletingId(p.id);
@@ -130,6 +181,10 @@ function DriversPage() {
     removePayout(p.id);
     setDeletingId(null);
     toast.message("Deleted");
+    const save = await flushFinanceSave();
+    if (!save.ok) {
+      toast.error(save.error || "Deleted on phone but cloud failed");
+    }
   }
 
   return (
@@ -276,7 +331,7 @@ function DriversPage() {
                                     </div>
                                   ) : null}
                                 </div>
-                                <div className="flex shrink-0 items-center gap-1.5">
+                                <div className="flex shrink-0 items-center gap-1">
                                   <div
                                     className={cn(
                                       "tabular-nums",
@@ -312,9 +367,20 @@ function DriversPage() {
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className="h-7 px-2 text-[11px]"
+                                    className="h-7 w-7 p-0"
+                                    onClick={() => openEdit(p)}
+                                    title="Edit"
+                                  >
+                                    <Pencil className="size-3.5" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 w-7 p-0"
                                     disabled={deletingId === p.id}
                                     onClick={() => deleteTx(p)}
+                                    title="Delete"
                                   >
                                     <Trash2 className="size-3.5" />
                                   </Button>
@@ -339,6 +405,70 @@ function DriversPage() {
         driverId={payDriverId}
         onDriverIdChange={setPayDriverId}
       />
+
+      <Dialog open={editOpen} onOpenChange={(o) => { setEditOpen(o); if (!o) setEditId(null); }}>
+        <DialogContent title="Edit transaction">
+          <div className="space-y-3 text-left">
+            <p className="text-[12px] text-muted">
+              {editKind === "extra_route"
+                ? "Extra work: Paid = no balance change · Unpaid = company owes"
+                : kindLabel(editKind)}
+            </p>
+            <div>
+              <Label>Amount ₹</Label>
+              <Input
+                inputMode="decimal"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Date</Label>
+              <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+            </div>
+            {editKind === "extra_route" ? (
+              <div>
+                <Label>Status</Label>
+                <Select value={editStatus} onValueChange={(v) => setEditStatus(v as PayoutStatus)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Unpaid — company owes</SelectItem>
+                    <SelectItem value="paid">Paid — no balance change</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div>
+                <Label>Status</Label>
+                <Select value={editStatus} onValueChange={(v) => setEditStatus(v as PayoutStatus)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="paid">Paid</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <Label>Note</Label>
+              <Input value={editNote} onChange={(e) => setEditNote(e.target.value)} />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button type="button" onClick={saveEdit} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
