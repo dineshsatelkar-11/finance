@@ -61,6 +61,8 @@ export function PaySheet({
   const [deductionAmt, setDeductionAmt] = useState("0");
   const [rentOffDays, setRentOffDays] = useState("0");
   const [posting, setPosting] = useState(false);
+  /** Extra work only: unpaid = company owes; paid = already paid, no balance impact */
+  const [extraPaid, setExtraPaid] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -85,6 +87,7 @@ export function PaySheet({
     setStep("form");
     setPendingId(null);
     setPosting(false);
+    setExtraPaid(false);
   }, [open, driverId]);
 
   const driver = drivers.find((d) => d.id === id);
@@ -102,7 +105,7 @@ export function PaySheet({
         bonus: bonusN,
         deduction: deductionN,
         rentOffDays: rentOffN,
-        throughDate: date, // advances only before / on slip date
+        throughDate: date,
       })
     : null;
   const salaryGross = settle?.gross ?? 0;
@@ -206,9 +209,9 @@ export function PaySheet({
       toast.error("Enter amount");
       return;
     }
-    // Extra work: unpaid at the time — record as paid balance adjustment only (no bank cash).
-    // Reduces driver balance so salary settlement picks it up automatically.
+    // Extra work: Paid = already paid (no balance); Unpaid = company owes (pending)
     if (kind === "extra_route") {
+      const status = extraPaid ? "paid" : "pending";
       const rec = recordPayout({
         driverId: driver.id,
         kind: "extra_route",
@@ -217,15 +220,19 @@ export function PaySheet({
         mode: "cash",
         bankAccountId: bankId || defaultBankId(),
         upiVpa: "",
-        note: note || "Extra work (balance only)",
-        status: "paid",
+        note: note || (extraPaid ? "Extra work (already paid)" : "Extra work (unpaid — company owes)"),
+        status,
       });
       if (!rec.ok) {
         toast.error(rec.error);
         return;
       }
       onOpenChange(false);
-      toast.success(`Extra work −${inr(amt)} on balance`);
+      if (extraPaid) {
+        toast.success(`Extra work ${inr(amt)} recorded (already paid — no balance change)`);
+      } else {
+        toast.success(`Extra work ${inr(amt)} unpaid — company owes`);
+      }
       const save = await flushFinanceSave();
       if (!save.ok) {
         toast.error(save.error || "Saved on phone but failed to reach cloud");
@@ -256,7 +263,6 @@ export function PaySheet({
     if (id) {
       setPayoutStatus(id, "paid");
     }
-    // Close sheet first so UI is not stuck waiting on cloud
     setPendingId(null);
     setStep("form");
     onOpenChange(false);
@@ -314,7 +320,10 @@ export function PaySheet({
                 onValueChange={(v) => {
                   setKind(v as PayoutKind);
                   if (v === "salary") setTimeout(applySalarySlip, 0);
-                  if (v === "extra_route") setAmount("500");
+                  if (v === "extra_route") {
+                    setAmount("500");
+                    setExtraPaid(false);
+                  }
                 }}
               >
                 <SelectTrigger>
@@ -450,12 +459,29 @@ export function PaySheet({
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder={kind === "extra_route" ? "500" : "0"}
                   />
-                  {kind === "extra_route" ? (
-                    <p className="mt-1 text-[11px] text-muted">
-                      Unpaid extra work — reduces balance only (no bank cash). Default ₹500.
-                    </p>
-                  ) : null}
                 </div>
+                {kind === "extra_route" ? (
+                  <div>
+                    <Label>Already paid?</Label>
+                    <Select
+                      value={extraPaid ? "paid" : "unpaid"}
+                      onValueChange={(v) => setExtraPaid(v === "paid")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unpaid">Unpaid — company owes this amount</SelectItem>
+                        <SelectItem value="paid">Paid — already paid, no balance change</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="mt-1 text-[11px] text-muted">
+                      {extraPaid
+                        ? "Just a record. Balance stays the same."
+                        : "Company still owes the driver. Shows on balance until settled."}
+                    </p>
+                  </div>
+                ) : null}
                 <div>
                   <Label>Date</Label>
                   <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -497,7 +523,11 @@ export function PaySheet({
                   <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Extra trip / night" />
                 </div>
                 <Button type="button" className="w-full" onClick={goConfirm}>
-                  {kind === "extra_route" ? "Record extra work on balance" : "Continue"}
+                  {kind === "extra_route"
+                    ? extraPaid
+                      ? "Record (already paid)"
+                      : "Record unpaid — company owes"
+                    : "Continue"}
                 </Button>
               </>
             )}
@@ -519,26 +549,17 @@ export function PaySheet({
               </div>
               <div className="flex justify-between">
                 <span className="text-muted">Date</span>
-                <span>{date}</span>
+                <span className="font-medium">{date}</span>
               </div>
-              {note ? (
-                <div className="flex justify-between gap-2">
-                  <span className="text-muted shrink-0">Note</span>
-                  <span className="text-right">{note}</span>
-                </div>
-              ) : null}
             </div>
             <div className="flex gap-2">
               <Button type="button" className="flex-1" onClick={markPaid}>
                 Mark paid
               </Button>
               <Button type="button" variant="outline" className="flex-1" onClick={markFailed}>
-                Mark failed
+                Failed
               </Button>
             </div>
-            <Button type="button" variant="ghost" className="w-full" onClick={() => setStep("form")}>
-              Back
-            </Button>
           </div>
         )}
       </DialogContent>
