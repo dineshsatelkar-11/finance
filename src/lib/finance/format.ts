@@ -367,7 +367,7 @@ export function loanPrincipalApplied(p: {
 }): number {
   if (p.kind !== "emi" && p.kind !== "prepay") return 0;
   if (p.principal != null && Number.isFinite(p.principal)) {
-    return Math.max(0, Math.round(Number(p.principal) * 100) / 100;
+    return Math.max(0, Math.round(Number(p.principal) * 100) / 100);
   }
   return Math.max(0, Math.round(Number(p.amount) * 100) / 100);
 }
