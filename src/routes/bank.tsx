@@ -66,8 +66,9 @@ function BankPage() {
     const map = new Map<string, number>();
     const add = (id: string, amt: number) => map.set(id, (map.get(id) || 0) + amt);
     for (const r of payouts) {
-      // salary + extra_route are balance-only (no bank cash movement)
-      if (r.status === "paid" && r.kind !== "return" && r.kind !== "salary" && r.kind !== "extra_route") {
+      // salary = balance-only (no bank cash).
+      // extra_route paid = real cash from bank (count as out); unpaid = company owes only (no bank).
+      if (r.status === "paid" && r.kind !== "return" && r.kind !== "salary") {
         add(r.bankAccountId, r.amount);
       }
     }
@@ -121,15 +122,19 @@ function BankPage() {
   const ledgerRows = useMemo(() => {
     const rows: LedgerRow[] = [];
     for (const r of payouts) {
-      if (r.kind === "salary" || r.kind === "extra_route") continue;
+      // salary never hits bank ledger; unpaid extra_route neither; paid extra_route does
+      if (r.kind === "salary") continue;
+      if (r.kind === "extra_route" && r.status !== "paid") continue;
       if (r.status !== "paid" || !forBank(r.bankAccountId) || !inScope(r.date)) continue;
       const d = drivers.find((x) => x.id === r.driverId);
       const isReturn = r.kind === "return";
+      const kindLabel =
+        r.kind === "extra_route" ? "Extra work" : r.kind === "advance" ? "advance" : r.kind;
       rows.push({
         id: `po-${r.id}`,
         date: r.date,
-        label: `${d?.name || "Driver"} · ${r.kind}`,
-        sub: r.note || "Payout",
+        label: `${d?.name || "Driver"} · ${kindLabel}`,
+        sub: r.note || (r.kind === "extra_route" ? "Extra work (paid from bank)" : "Payout"),
         amount: r.amount,
         dir: isReturn ? "in" : "out",
         source: "payout",
@@ -453,7 +458,7 @@ function BankPage() {
                               <span className={cn("tabular-nums text-sm font-medium", r.dir === "out" ? "text-danger" : "text-ok")}>
                                 {r.dir === "out" ? "−" : "+"}{inr(r.amount)}
                               </span>
-                              <Button type="button" size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => deleteRow(r)}>
+                              <Button type="button" variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => deleteRow(r)} title="Delete">
                                 <Trash2 className="size-3.5" />
                               </Button>
                             </div>
@@ -469,21 +474,27 @@ function BankPage() {
         })}
       </div>
 
-      {banks.length === 0 ? (
-        <Card className="p-6 text-center text-sm text-muted">No bank accounts yet. Add one to track cash.</Card>
-      ) : null}
-
       <Card className="border-danger/30 p-4">
         <CardTitle className="text-danger">Danger zone</CardTitle>
         <CardHint>Clears all finance data from this device and cloud.</CardHint>
-        <Button type="button" variant="outline" className="mt-3 border-danger text-danger" disabled={clearing} onClick={async () => {
-          if (!window.confirm("Clear ALL finance data? This cannot be undone.")) return;
-          setClearing(true);
-          const r = await clearAllFinanceData();
-          setClearing(false);
-          if (!r.ok) toast.error(r.error || "Clear failed");
-          else toast.success("All finance data cleared");
-        }}>
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-3 border-danger text-danger"
+          disabled={clearing}
+          onClick={async () => {
+            if (!window.confirm("Clear ALL finance data from phone and cloud? This cannot be undone.")) return;
+            setClearing(true);
+            try {
+              await clearAllFinanceData();
+              toast.success("Cleared");
+            } catch (e) {
+              toast.error(String(e));
+            } finally {
+              setClearing(false);
+            }
+          }}
+        >
           {clearing ? "Clearing…" : "Clear all finance data"}
         </Button>
       </Card>
