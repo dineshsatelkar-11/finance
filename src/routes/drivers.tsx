@@ -15,12 +15,21 @@ import {
   driverBalance,
   inr,
   initials,
+  monthISO,
+  monthLabel,
   netSalaryPayable,
+  prevMonthISO,
+  salarySettlement,
   shortDate,
   suggestedSalary,
 } from "@/lib/finance/format";
 import { flushFinanceSave, rememberDeletedId } from "@/lib/finance/sync";
-import { printSalarySlip, slipFromSalaryPayout } from "@/lib/finance/salary-slip";
+import {
+  printSalarySlip,
+  resolveSalarySlipMeta,
+  salarySlipNote,
+  slipFromSalaryPayout,
+} from "@/lib/finance/salary-slip";
 import type { Payout, PayoutStatus } from "@/lib/finance/types";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +99,7 @@ function DriversPage() {
   const attendances = useFinance((s) => s.attendances);
   const removePayout = useFinance((s) => s.removePayout);
   const updatePayout = useFinance((s) => s.updatePayout);
+  const setAttendance = useFinance((s) => s.setAttendance);
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [payDriverId, setPayDriverId] = useState<string | null>(null);
@@ -98,11 +108,18 @@ function DriversPage() {
   // Edit dialog state
   const [editOpen, setEditOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [editDriverId, setEditDriverId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editNote, setEditNote] = useState("");
   const [editStatus, setEditStatus] = useState<PayoutStatus>("paid");
   const [editKind, setEditKind] = useState("");
+  // Salary-specific edit fields
+  const [editSalaryMonth, setEditSalaryMonth] = useState(prevMonthISO());
+  const [editLeave, setEditLeave] = useState("0");
+  const [editBonus, setEditBonus] = useState("0");
+  const [editDeduction, setEditDeduction] = useState("0");
+  const [editRentOff, setEditRentOff] = useState("0");
   const [saving, setSaving] = useState(false);
 
   const active = drivers.filter((d) => d.active);
@@ -138,31 +155,94 @@ function DriversPage() {
     return map;
   }, [payouts, selectedDriverId, drivers]);
 
+  const editDriver = drivers.find((d) => d.id === editDriverId) || null;
+  const editLeaveN = Math.max(0, Math.floor(parseFloat(editLeave) || 0));
+  const editBonusN = Math.max(0, parseFloat(editBonus) || 0);
+  const editDeductionN = Math.max(0, parseFloat(editDeduction) || 0);
+  const editRentOffN = Math.max(0, Math.floor(parseFloat(editRentOff) || 0));
+  const editSettle =
+    editKind === "salary" && editDriver
+      ? salarySettlement({
+          driver: editDriver,
+          leaveDays: editLeaveN,
+          month: editSalaryMonth,
+          payouts: payouts.filter((p) => p.id !== editId),
+          fleets,
+          bonus: editBonusN,
+          deduction: editDeductionN,
+          rentOffDays: editRentOffN,
+          throughDate: editDate || undefined,
+        })
+      : null;
+  const editSlipAmount = editSettle
+    ? Math.round((editSettle.gross + editSettle.bonus - editSettle.rent - editSettle.deduction) * 100) / 100
+    : 0;
+
   function openEdit(p: Payout) {
     setEditId(p.id);
+    setEditDriverId(p.driverId);
     setEditAmount(String(p.amount));
     setEditDate(String(p.date || "").slice(0, 10));
     setEditNote(p.note || "");
     setEditStatus(p.status as PayoutStatus);
     setEditKind(p.kind);
+    if (p.kind === "salary") {
+      const meta = resolveSalarySlipMeta(p, p.driverId, attendances);
+      setEditSalaryMonth(meta.month || prevMonthISO());
+      setEditLeave(String(meta.leaveDays || 0));
+      setEditBonus(String(meta.bonus || 0));
+      setEditDeduction(String(meta.deduction || 0));
+      setEditRentOff(String(meta.rentOffDays || 0));
+    }
     setEditOpen(true);
   }
 
   async function saveEdit() {
     if (!editId) return;
-    const amt = parseFloat(editAmount);
-    if (!(amt > 0)) {
-      toast.error("Enter a valid amount");
-      return;
-    }
     setSaving(true);
     try {
-      updatePayout(editId, {
-        amount: Math.round(amt * 100) / 100,
-        date: editDate,
-        note: editNote.trim(),
-        status: editStatus,
-      });
+      if (editKind === "salary" && editDriver && editSettle) {
+        const slip = editSlipAmount;
+        if (!(slip > 0)) {
+          toast.error("Salary slip amount is zero");
+          setSaving(false);
+          return;
+        }
+        const balBefore = editSettle.balance;
+        const after = Math.round((balBefore + slip) * 100) / 100;
+        const note = salarySlipNote({
+          month: editSalaryMonth,
+          leaveDays: editLeaveN,
+          rentOffDays: editRentOffN,
+          bonus: editBonusN,
+          deduction: editDeductionN,
+          rent: editSettle.rent,
+          slipAmount: slip,
+          balanceBefore: balBefore,
+          balanceAfter: after,
+          advancesBefore: editSettle.advances,
+        });
+        setAttendance(editDriver.id, editSalaryMonth, editLeaveN);
+        updatePayout(editId, {
+          amount: slip,
+          date: editDate,
+          note,
+          status: "paid",
+        });
+      } else {
+        const amt = parseFloat(editAmount);
+        if (!(amt > 0)) {
+          toast.error("Enter a valid amount");
+          setSaving(false);
+          return;
+        }
+        updatePayout(editId, {
+          amount: Math.round(amt * 100) / 100,
+          date: editDate,
+          note: editNote.trim(),
+          status: editStatus,
+        });
+      }
       setEditOpen(false);
       toast.success("Updated");
       const save = await flushFinanceSave();
@@ -407,60 +487,158 @@ function DriversPage() {
       />
 
       <Dialog open={editOpen} onOpenChange={(o) => { setEditOpen(o); if (!o) setEditId(null); }}>
-        <DialogContent title="Edit transaction">
+        <DialogContent title={editKind === "salary" ? "Edit salary slip" : "Edit transaction"}>
           <div className="space-y-3 text-left">
-            <p className="text-[12px] text-muted">
-              {editKind === "extra_route"
-                ? "Extra work: Paid = no balance change · Unpaid = company owes"
-                : kindLabel(editKind)}
-            </p>
-            <div>
-              <Label>Amount ₹</Label>
-              <Input
-                inputMode="decimal"
-                value={editAmount}
-                onChange={(e) => setEditAmount(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>Date</Label>
-              <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
-            </div>
-            {editKind === "extra_route" ? (
-              <div>
-                <Label>Status</Label>
-                <Select value={editStatus} onValueChange={(v) => setEditStatus(v as PayoutStatus)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pending">Unpaid — company owes</SelectItem>
-                    <SelectItem value="paid">Paid — no balance change</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            {editKind === "salary" ? (
+              <>
+                <p className="text-[12px] text-muted">
+                  Same form as Post salary slip — leave, bonus, deduction, rent off update the slip amount.
+                </p>
+                <div>
+                  <Label>Salary for month</Label>
+                  <Select
+                    value={editSalaryMonth}
+                    onValueChange={(ym) => {
+                      setEditSalaryMonth(ym);
+                      const att = attendances.find((a) => a.driverId === editDriverId && a.month === ym);
+                      if (att) setEditLeave(String(att.leaveDays ?? 0));
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[0, 1, 2, 3].map((back) => {
+                        let ym = monthISO();
+                        for (let i = 0; i < back; i++) ym = prevMonthISO(ym);
+                        return (
+                          <SelectItem key={ym} value={ym}>
+                            {monthLabel(ym)}
+                            {back === 1 ? " (typical)" : ""}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Leave days</Label>
+                    <Input inputMode="numeric" value={editLeave} onChange={(e) => setEditLeave(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>Bonus ₹</Label>
+                    <Input inputMode="decimal" value={editBonus} onChange={(e) => setEditBonus(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>Deduction ₹</Label>
+                    <Input inputMode="decimal" value={editDeduction} onChange={(e) => setEditDeduction(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>Rent off days</Label>
+                    <Input inputMode="numeric" value={editRentOff} onChange={(e) => setEditRentOff(e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <Label>Slip date</Label>
+                  <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                </div>
+                {editSettle ? (
+                  <div className="rounded-md border border-line p-2.5 text-sm space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-muted">Gross</span>
+                      <span className="tabular-nums">{inr(editSettle.gross)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted">Balance till date</span>
+                      <span className="tabular-nums">{inr(editSettle.balance)}</span>
+                    </div>
+                    {editSettle.rent > 0 ? (
+                      <div className="flex justify-between">
+                        <span className="text-muted">
+                          Tempo rent{editSettle.rentFleetName ? ` (${editSettle.rentFleetName})` : ""}
+                        </span>
+                        <span className="tabular-nums">−{inr(editSettle.rent)}</span>
+                      </div>
+                    ) : null}
+                    {editBonusN > 0 ? (
+                      <div className="flex justify-between">
+                        <span className="text-muted">Bonus</span>
+                        <span className="tabular-nums">{inr(editBonusN)}</span>
+                      </div>
+                    ) : null}
+                    {editDeductionN > 0 ? (
+                      <div className="flex justify-between">
+                        <span className="text-muted">Deduction</span>
+                        <span className="tabular-nums">−{inr(editDeductionN)}</span>
+                      </div>
+                    ) : null}
+                    <div className="flex justify-between border-t border-line pt-1 font-medium">
+                      <span>Salary slip amount</span>
+                      <span className="tabular-nums">{inr(editSlipAmount)}</span>
+                    </div>
+                  </div>
+                ) : null}
+                <p className="text-[11px] text-muted">
+                  Slip accrues to driver balance. Cash around 10th is recorded as advance.
+                </p>
+              </>
             ) : (
-              <div>
-                <Label>Status</Label>
-                <Select value={editStatus} onValueChange={(v) => setEditStatus(v as PayoutStatus)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="paid">Paid</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="failed">Failed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <>
+                <p className="text-[12px] text-muted">
+                  {editKind === "extra_route"
+                    ? "Extra work: Paid = no balance change · Unpaid = company owes"
+                    : kindLabel(editKind)}
+                </p>
+                <div>
+                  <Label>Amount ₹</Label>
+                  <Input
+                    inputMode="decimal"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Date</Label>
+                  <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                </div>
+                {editKind === "extra_route" ? (
+                  <div>
+                    <Label>Status</Label>
+                    <Select value={editStatus} onValueChange={(v) => setEditStatus(v as PayoutStatus)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">Unpaid — company owes</SelectItem>
+                        <SelectItem value="paid">Paid — no balance change</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div>
+                    <Label>Status</Label>
+                    <Select value={editStatus} onValueChange={(v) => setEditStatus(v as PayoutStatus)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="failed">Failed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div>
+                  <Label>Note</Label>
+                  <Input value={editNote} onChange={(e) => setEditNote(e.target.value)} />
+                </div>
+              </>
             )}
-            <div>
-              <Label>Note</Label>
-              <Input value={editNote} onChange={(e) => setEditNote(e.target.value)} />
-            </div>
             <div className="flex gap-2 pt-1">
               <Button type="button" onClick={saveEdit} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
+                {saving ? "Saving…" : editKind === "salary" ? "Update salary slip" : "Save"}
               </Button>
               <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
                 Cancel
