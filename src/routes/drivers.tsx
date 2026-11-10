@@ -22,14 +22,14 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/drivers")({ component: DriversPage });
 
-function kindLabel(kind: string) {
+function kindLabel(kind: string, status?: string) {
   switch (kind) {
     case "salary":
       return "Salary";
     case "advance":
       return "Advance";
     case "extra_route":
-      return "Extra work";
+      return status === "pending" ? "Extra work (unpaid)" : "Extra work (paid)";
     case "bonus":
       return "Bonus";
     case "fine":
@@ -41,21 +41,22 @@ function kindLabel(kind: string) {
   }
 }
 
-/** Balance change for one paid payout (same rules as driverBalance). Extra work is neutral here. */
-function balanceDelta(kind: string, amount: number): number {
+/** Balance change for one payout (same rules as driverBalance). */
+function balanceDelta(kind: string, amount: number, status: string): number {
   const a = Number(amount) || 0;
+  // Unpaid extra work → company owes (+)
+  if (kind === "extra_route" && status === "pending") return +a;
+  // Paid extra work → no impact
+  if (kind === "extra_route") return 0;
+  if (status !== "paid") return 0;
   if (kind === "advance" || kind === "fine") return -a;
   if (kind === "return" || kind === "salary") return +a;
-  // bonus, extra_route etc. do not affect running balance display
   return 0;
 }
 
-/**
- * Same calendar day + same createdAt (statement seeds): apply neutrals first,
- * then credits, then debits.
- */
 function kindChronoRank(kind: string): number {
-  if (kind === "bonus" || kind === "extra_route") return 0;
+  if (kind === "bonus") return 0;
+  if (kind === "extra_route") return 0;
   if (kind === "return" || kind === "salary") return 1;
   if (kind === "advance" || kind === "fine") return 2;
   return 1;
@@ -100,8 +101,8 @@ function DriversPage() {
   }, [payouts, selectedDriverId]);
 
   /**
-   * Running balance AFTER each transaction (chronological, oldest → newest).
-   * Extra work does not change After (deducted only at salary).
+   * Running balance AFTER each transaction (chronological).
+   * Unpaid extra work increases company-owe; paid extra work is neutral.
    */
   const balAfterById = useMemo(() => {
     const map = new Map<string, number>();
@@ -116,9 +117,7 @@ function DriversPage() {
 
     let bal = Math.round((Number(d.openingBalance) || 0) * 100) / 100;
     for (const p of chrono) {
-      if (p.status === "paid") {
-        bal = Math.round((bal + balanceDelta(p.kind, p.amount)) * 100) / 100;
-      }
+      bal = Math.round((bal + balanceDelta(p.kind, p.amount, p.status)) * 100) / 100;
       map.set(p.id, bal);
     }
     return map;
@@ -139,9 +138,8 @@ function DriversPage() {
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight">Drivers</h1>
           <p className="max-w-xl text-sm text-muted">
-            Balance = opening − advances − fines + returns + salary slips. Extra work is recorded
-            for salary only (does not change live balance). Gross uses calendar days (leave default 0).
-            Month-end post salary to balance; ~10th pay cash as advance.
+            Balance = opening − advances − fines + returns + salary slips + unpaid extra work.
+            Paid extra work does not change balance. Gross uses calendar days (leave default 0).
           </p>
         </div>
         <Button asChild variant="outline" size="sm">
@@ -250,14 +248,14 @@ function DriversPage() {
                           <li className="py-4 text-center text-sm text-muted">No transactions for this driver yet.</li>
                         ) : (
                           driverTx.map((p) => {
-                            const isIn = p.kind === "return";
-                            const isNeutral = p.kind === "bonus" || p.kind === "extra_route";
+                            const isIn = p.kind === "return" || (p.kind === "extra_route" && p.status === "pending");
+                            const isNeutral = p.kind === "bonus" || (p.kind === "extra_route" && p.status === "paid");
                             const isSalary = p.kind === "salary";
                             const after = balAfterById.get(p.id);
                             return (
                               <li key={p.id} className="flex items-center justify-between gap-2 py-2.5 text-sm">
                                 <div className="min-w-0 flex-1">
-                                  <div className="font-medium">{kindLabel(p.kind)}</div>
+                                  <div className="font-medium">{kindLabel(p.kind, p.status)}</div>
                                   <div className="text-[12px] text-muted">
                                     {shortDate(p.date)} · {p.status}
                                     {p.note ? ` · ${p.note}` : ""}
