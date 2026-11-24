@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
   Download,
-  FileSpreadsheet,
   Printer,
   Filter,
   Truck,
@@ -12,6 +11,7 @@ import {
   HandCoins,
   Banknote,
   LayoutList,
+  ListOrdered,
 } from "lucide-react";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/reports")({ component: ReportsPage });
 
 type ReportKind =
+  | "statement"
   | "summary"
   | "expenses"
   | "drivers"
@@ -32,6 +33,7 @@ type ReportKind =
   | "bank";
 
 const REPORTS: { id: ReportKind; label: string; icon: typeof Receipt; hint: string }[] = [
+  { id: "statement", label: "All transactions", icon: ListOrdered, hint: "Full statement with running balance after each row" },
   { id: "summary", label: "Full summary", icon: LayoutList, hint: "P&L style overview for the range" },
   { id: "expenses", label: "Expenses", icon: Receipt, hint: "All spends by category & vendor" },
   { id: "drivers", label: "Drivers", icon: Truck, hint: "Balances, advances, salary in range" },
@@ -106,6 +108,20 @@ const KIND_LABEL: Record<string, string> = {
   disbursement: "Disbursement",
 };
 
+type StmtRow = {
+  id: string;
+  date: string;
+  type: string;
+  party: string;
+  detail: string;
+  amount: number;
+  dir: "in" | "out" | "none";
+  status: string;
+  bank: string;
+  cash: boolean;
+  createdAt?: string;
+};
+
 function ReportsPage() {
   const drivers = useFinance((s) => s.drivers);
   const payouts = useFinance((s) => s.payouts);
@@ -116,11 +132,12 @@ function ReportsPage() {
   const bankTransfers = useFinance((s) => s.bankTransfers);
   const receipts = useFinance((s) => s.receipts);
 
-  const [kind, setKind] = useState<ReportKind>("summary");
+  const [kind, setKind] = useState<ReportKind>("statement");
   const [from, setFrom] = useState(monthStartISO);
   const [to, setTo] = useState(todayISO());
   const [driverFilter, setDriverFilter] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("paid");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [bankFilter, setBankFilter] = useState<string>("");
 
   const bankName = (id: string) => banks.find((b) => b.id === id)?.name || id || "—";
   const driverName = (id: string) => drivers.find((d) => d.id === id)?.name || id || "—";
@@ -130,12 +147,12 @@ function ReportsPage() {
     const exp = expenses
       .filter((e) => inRange(e.date, from, to))
       .filter((e) => !statusFilter || e.status === statusFilter)
-      .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+      .sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
     const pay = payouts
       .filter((p) => inRange(p.date, from, to))
       .filter((p) => !statusFilter || p.status === statusFilter)
       .filter((p) => !driverFilter || p.driverId === driverFilter)
-      .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+      .sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
     const rec = receipts
       .filter((r) => inRange(r.date, from, to))
       .filter((r) => !statusFilter || r.status === statusFilter)
@@ -149,6 +166,252 @@ function ReportsPage() {
       .sort((a, b) => b.date.localeCompare(a.date));
     return { exp, pay, rec, lp, xfer };
   }, [expenses, payouts, receipts, loanPayments, bankTransfers, from, to, statusFilter, driverFilter]);
+
+  const pending = useMemo(() => {
+    const payPend = payouts.filter(
+      (p) => p.status === "pending" && (!driverFilter || p.driverId === driverFilter),
+    );
+    const expPend = expenses.filter((e) => e.status === "pending");
+    const recPend = receipts.filter((r) => r.status === "pending");
+    const lpPend = loanPayments.filter((p) => p.status === "pending");
+    return {
+      payoutAmt: payPend.reduce((s, p) => s + p.amount, 0),
+      payoutCount: payPend.length,
+      expenseAmt: expPend.reduce((s, e) => s + e.amount, 0),
+      expenseCount: expPend.length,
+      receiptAmt: recPend.reduce((s, r) => s + r.amount, 0),
+      receiptCount: recPend.length,
+      loanAmt: lpPend.reduce((s, p) => s + p.amount, 0),
+      loanCount: lpPend.length,
+      total:
+        payPend.reduce((s, p) => s + p.amount, 0) +
+        expPend.reduce((s, e) => s + e.amount, 0) +
+        lpPend.reduce((s, p) => s + p.amount, 0),
+    };
+  }, [payouts, expenses, receipts, loanPayments, driverFilter]);
+
+  const statement = useMemo(() => {
+    const rows: StmtRow[] = [];
+
+    for (const p of payouts) {
+      if (!inRange(p.date, from, to)) continue;
+      if (statusFilter && p.status !== statusFilter) continue;
+      if (driverFilter && p.driverId !== driverFilter) continue;
+      if (bankFilter && p.bankAccountId !== bankFilter && p.kind !== "salary") continue;
+
+      const isReturn = p.kind === "return";
+      const isSalary = p.kind === "salary";
+      const cash =
+        p.status === "paid" &&
+        !isSalary &&
+        !(p.kind === "extra_route" && p.status !== "paid");
+
+      rows.push({
+        id: `po-${p.id}`,
+        date: p.date,
+        type: KIND_LABEL[p.kind] || p.kind,
+        party: driverName(p.driverId),
+        detail: p.note || (isSalary ? "Salary accrual (balance only)" : "Payout"),
+        amount: p.amount,
+        dir: isSalary ? "none" : isReturn ? "in" : "out",
+        status: p.status,
+        bank: isSalary ? "—" : bankName(p.bankAccountId),
+        cash: cash && !isSalary,
+        createdAt: p.createdAt,
+      });
+    }
+
+    for (const e of expenses) {
+      if (!inRange(e.date, from, to)) continue;
+      if (statusFilter && e.status !== statusFilter) continue;
+      if (bankFilter && e.bankAccountId !== bankFilter) continue;
+      rows.push({
+        id: `ex-${e.id}`,
+        date: e.date,
+        type: e.category || "Expense",
+        party: e.vendor || "—",
+        detail: e.note || e.category || "Expense",
+        amount: e.amount,
+        dir: "out",
+        status: e.status,
+        bank: bankName(e.bankAccountId),
+        cash: e.status === "paid",
+        createdAt: e.createdAt,
+      });
+    }
+
+    for (const r of receipts) {
+      if (!inRange(r.date, from, to)) continue;
+      if (statusFilter && r.status !== statusFilter) continue;
+      if (bankFilter && r.bankAccountId !== bankFilter) continue;
+      rows.push({
+        id: `rc-${r.id}`,
+        date: r.date,
+        type: "Receipt",
+        party: r.customerName || "Customer",
+        detail: r.note || "Receipt",
+        amount: r.amount,
+        dir: "in",
+        status: r.status,
+        bank: bankName(r.bankAccountId),
+        cash: r.status === "paid",
+        createdAt: r.createdAt,
+      });
+    }
+
+    for (const p of loanPayments) {
+      if (!inRange(p.date, from, to)) continue;
+      if (statusFilter && p.status !== statusFilter) continue;
+      if (bankFilter && p.bankAccountId !== bankFilter) continue;
+      const isDisb = p.kind === "disbursement";
+      rows.push({
+        id: `lp-${p.id}`,
+        date: p.date,
+        type: KIND_LABEL[p.kind] || p.kind,
+        party: loanName(p.loanId),
+        detail: p.note || "Loan",
+        amount: p.amount,
+        dir: isDisb ? "in" : "out",
+        status: p.status,
+        bank: bankName(p.bankAccountId),
+        cash: p.status === "paid",
+        createdAt: p.createdAt,
+      });
+    }
+
+    for (const t of bankTransfers) {
+      if (!inRange(t.date, from, to)) continue;
+      if (bankFilter && t.fromBankId !== bankFilter && t.toBankId !== bankFilter) continue;
+      const row: StmtRow = {
+        id: `xf-${t.id}`,
+        date: t.date,
+        type: "Transfer",
+        party: `${bankName(t.fromBankId)} → ${bankName(t.toBankId)}`,
+        detail: t.note || "Internal transfer",
+        amount: t.amount,
+        dir: "none",
+        status: "paid",
+        bank: bankFilter
+          ? bankFilter === t.fromBankId
+            ? bankName(t.fromBankId)
+            : bankName(t.toBankId)
+          : "Internal",
+        cash: false,
+        createdAt: t.createdAt,
+      };
+      if (bankFilter === t.fromBankId) {
+        row.dir = "out";
+        row.cash = true;
+      } else if (bankFilter === t.toBankId) {
+        row.dir = "in";
+        row.cash = true;
+      }
+      rows.push(row);
+    }
+
+    rows.sort((a, b) => {
+      const d = a.date.localeCompare(b.date);
+      if (d !== 0) return d;
+      return String(a.createdAt || a.id).localeCompare(String(b.createdAt || b.id));
+    });
+
+    let opening = 0;
+    if (bankFilter) {
+      const b = banks.find((x) => x.id === bankFilter);
+      opening = Number(b?.opening) || 0;
+      for (const p of payouts) {
+        if (p.status !== "paid" || p.kind === "salary") continue;
+        if (p.bankAccountId !== bankFilter) continue;
+        if (String(p.date).slice(0, 10) >= from) continue;
+        if (p.kind === "return") opening += p.amount;
+        else opening -= p.amount;
+      }
+      for (const e of expenses) {
+        if (e.status !== "paid" || e.bankAccountId !== bankFilter) continue;
+        if (String(e.date).slice(0, 10) >= from) continue;
+        opening -= e.amount;
+      }
+      for (const r of receipts) {
+        if (r.status !== "paid" || r.bankAccountId !== bankFilter) continue;
+        if (String(r.date).slice(0, 10) >= from) continue;
+        opening += r.amount;
+      }
+      for (const p of loanPayments) {
+        if (p.status !== "paid" || p.bankAccountId !== bankFilter) continue;
+        if (String(p.date).slice(0, 10) >= from) continue;
+        if (p.kind === "disbursement") opening += p.amount;
+        else opening -= p.amount;
+      }
+      for (const t of bankTransfers) {
+        if (String(t.date).slice(0, 10) >= from) continue;
+        if (t.fromBankId === bankFilter) opening -= t.amount;
+        if (t.toBankId === bankFilter) opening += t.amount;
+      }
+    } else {
+      opening = banks.reduce((s, b) => s + (Number(b.opening) || 0), 0);
+      for (const p of payouts) {
+        if (p.status !== "paid" || p.kind === "salary") continue;
+        if (String(p.date).slice(0, 10) >= from) continue;
+        if (p.kind === "return") opening += p.amount;
+        else opening -= p.amount;
+      }
+      for (const e of expenses) {
+        if (e.status !== "paid") continue;
+        if (String(e.date).slice(0, 10) >= from) continue;
+        opening -= e.amount;
+      }
+      for (const r of receipts) {
+        if (r.status !== "paid") continue;
+        if (String(r.date).slice(0, 10) >= from) continue;
+        opening += r.amount;
+      }
+      for (const p of loanPayments) {
+        if (p.status !== "paid") continue;
+        if (String(p.date).slice(0, 10) >= from) continue;
+        if (p.kind === "disbursement") opening += p.amount;
+        else opening -= p.amount;
+      }
+    }
+
+    opening = Math.round(opening * 100) / 100;
+    let bal = opening;
+    const withBal: (StmtRow & { balAfter: number | null })[] = rows.map((r) => {
+      if (r.cash && r.dir === "in") {
+        bal = Math.round((bal + r.amount) * 100) / 100;
+        return { ...r, balAfter: bal };
+      }
+      if (r.cash && r.dir === "out") {
+        bal = Math.round((bal - r.amount) * 100) / 100;
+        return { ...r, balAfter: bal };
+      }
+      return { ...r, balAfter: bal };
+    });
+
+    const display = withBal.slice().reverse();
+    const cashIn = rows.filter((r) => r.cash && r.dir === "in").reduce((s, r) => s + r.amount, 0);
+    const cashOut = rows.filter((r) => r.cash && r.dir === "out").reduce((s, r) => s + r.amount, 0);
+
+    return {
+      rows: display,
+      opening,
+      closing: bal,
+      cashIn,
+      cashOut,
+      count: rows.length,
+    };
+  }, [
+    payouts,
+    expenses,
+    receipts,
+    loanPayments,
+    bankTransfers,
+    banks,
+    from,
+    to,
+    statusFilter,
+    driverFilter,
+    bankFilter,
+  ]);
 
   const summary = useMemo(() => {
     const expTotal = filtered.exp.reduce((s, e) => s + e.amount, 0);
@@ -208,11 +471,35 @@ function ReportsPage() {
 
   function exportCsv() {
     const stamp = `${from}_to_${to}`;
+    if (kind === "statement") {
+      downloadCsv(`statement_${stamp}.csv`, [
+        ["Date", "Type", "Party", "Detail", "In", "Out", "Balance after", "Status", "Bank"],
+        ...statement.rows.map((r) => [
+          r.date,
+          r.type,
+          r.party,
+          r.detail,
+          r.dir === "in" ? r.amount : "",
+          r.dir === "out" ? r.amount : "",
+          r.balAfter != null ? r.balAfter : "",
+          r.status,
+          r.bank,
+        ]),
+      ]);
+      return;
+    }
     if (kind === "expenses") {
       downloadCsv(`expenses_${stamp}.csv`, [
         ["Date", "Category", "Vendor", "Amount", "Mode", "Status", "Bank", "Note"],
         ...filtered.exp.map((e) => [
-          e.date, e.category, e.vendor || "", e.amount, e.mode, e.status, bankName(e.bankAccountId), e.note || "",
+          e.date,
+          e.category,
+          e.vendor || "",
+          e.amount,
+          e.mode,
+          e.status,
+          bankName(e.bankAccountId),
+          e.note || "",
         ]),
       ]);
       return;
@@ -221,7 +508,14 @@ function ReportsPage() {
       downloadCsv(`payouts_${stamp}.csv`, [
         ["Date", "Driver", "Kind", "Amount", "Mode", "Status", "Bank", "Note"],
         ...filtered.pay.map((p) => [
-          p.date, driverName(p.driverId), KIND_LABEL[p.kind] || p.kind, p.amount, p.mode, p.status, bankName(p.bankAccountId), p.note || "",
+          p.date,
+          driverName(p.driverId),
+          KIND_LABEL[p.kind] || p.kind,
+          p.amount,
+          p.mode,
+          p.status,
+          bankName(p.bankAccountId),
+          p.note || "",
         ]),
       ]);
       return;
@@ -230,7 +524,14 @@ function ReportsPage() {
       downloadCsv(`drivers_${stamp}.csv`, [
         ["Driver", "Balance", "Advances", "Salary slips", "Extra work", "Fines", "Returns", "Tx count"],
         ...summary.driverRows.map((r) => [
-          r.driver.name, r.balance, r.advances, r.salary, r.extra, r.fines, r.returns, r.txCount,
+          r.driver.name,
+          r.balance,
+          r.advances,
+          r.salary,
+          r.extra,
+          r.fines,
+          r.returns,
+          r.txCount,
         ]),
       ]);
       return;
@@ -239,7 +540,13 @@ function ReportsPage() {
       downloadCsv(`receipts_${stamp}.csv`, [
         ["Date", "Customer", "Amount", "Mode", "Status", "Bank", "Note"],
         ...filtered.rec.map((r) => [
-          r.date, r.customerName || "", r.amount, r.mode, r.status, bankName(r.bankAccountId), r.note || "",
+          r.date,
+          r.customerName || "",
+          r.amount,
+          r.mode,
+          r.status,
+          bankName(r.bankAccountId),
+          r.note || "",
         ]),
       ]);
       return;
@@ -248,7 +555,14 @@ function ReportsPage() {
       downloadCsv(`loan_payments_${stamp}.csv`, [
         ["Date", "Loan", "Kind", "Amount", "Mode", "Status", "Bank", "Note"],
         ...filtered.lp.map((p) => [
-          p.date, loanName(p.loanId), KIND_LABEL[p.kind] || p.kind, p.amount, p.mode, p.status, bankName(p.bankAccountId), p.note || "",
+          p.date,
+          loanName(p.loanId),
+          KIND_LABEL[p.kind] || p.kind,
+          p.amount,
+          p.mode,
+          p.status,
+          bankName(p.bankAccountId),
+          p.note || "",
         ]),
       ]);
       return;
@@ -293,7 +607,9 @@ function ReportsPage() {
       <div className="flex flex-wrap items-start justify-between gap-3 print:hidden">
         <div>
           <h1 className="font-display text-xl font-medium tracking-tight text-ink sm:text-2xl">Reports</h1>
-          <p className="mt-0.5 text-sm text-muted">Date-range reports for expenses, drivers, payouts & more</p>
+          <p className="mt-0.5 text-sm text-muted">
+            Full transaction statement with running balance, pending & date-range exports
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" onClick={exportCsv}>
@@ -313,21 +629,32 @@ function ReportsPage() {
           <CardTitle className="text-sm">Filters</CardTitle>
           <CardHint className="ml-auto mt-0">{rangeLabel}</CardHint>
         </div>
-        <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="space-y-1 text-sm">
             <span className="text-muted">From</span>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-              className="h-9 w-full rounded-md border border-line bg-raised px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25" />
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="h-9 w-full rounded-md border border-line bg-raised px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
+            />
           </label>
           <label className="space-y-1 text-sm">
             <span className="text-muted">To</span>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
-              className="h-9 w-full rounded-md border border-line bg-raised px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25" />
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="h-9 w-full rounded-md border border-line bg-raised px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
+            />
           </label>
           <label className="space-y-1 text-sm">
             <span className="text-muted">Status</span>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-9 w-full rounded-md border border-line bg-raised px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-9 w-full rounded-md border border-line bg-raised px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
+            >
               <option value="">All</option>
               <option value="paid">Paid</option>
               <option value="pending">Pending</option>
@@ -336,11 +663,34 @@ function ReportsPage() {
           </label>
           <label className="space-y-1 text-sm">
             <span className="text-muted">Driver</span>
-            <select value={driverFilter} onChange={(e) => setDriverFilter(e.target.value)}
-              className="h-9 w-full rounded-md border border-line bg-raised px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25">
+            <select
+              value={driverFilter}
+              onChange={(e) => setDriverFilter(e.target.value)}
+              className="h-9 w-full rounded-md border border-line bg-raised px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
+            >
               <option value="">All drivers</option>
-              {drivers.filter((d) => d.active).sort((a, b) => a.name.localeCompare(b.name)).map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
+              {drivers
+                .filter((d) => d.active)
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-muted">Bank</span>
+            <select
+              value={bankFilter}
+              onChange={(e) => setBankFilter(e.target.value)}
+              className="h-9 w-full rounded-md border border-line bg-raised px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
+            >
+              <option value="">All banks</option>
+              {banks.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
               ))}
             </select>
           </label>
@@ -350,11 +700,16 @@ function ReportsPage() {
             const Icon = r.icon;
             const active = kind === r.id;
             return (
-              <button key={r.id} type="button" onClick={() => setKind(r.id)} title={r.hint}
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => setKind(r.id)}
+                title={r.hint}
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors",
                   active ? "border-navy bg-navy text-navy-fg" : "border-line bg-raised text-ink hover:bg-accent-soft",
-                )}>
+                )}
+              >
                 <Icon className="size-3.5" />
                 {r.label}
               </button>
@@ -364,11 +719,110 @@ function ReportsPage() {
       </Card>
 
       <div className="hidden print:block">
-        <h1 className="text-lg font-semibold">Satelkar’s Logistics — {REPORTS.find((r) => r.id === kind)?.label}</h1>
+        <h1 className="text-lg font-semibold">
+          Satelkar's Logistics — {REPORTS.find((r) => r.id === kind)?.label}
+        </h1>
         <p className="text-sm text-gray-600">
-          {rangeLabel}{statusFilter ? ` · ${statusFilter}` : ""}{driverFilter ? ` · ${driverName(driverFilter)}` : ""}
+          {rangeLabel}
+          {statusFilter ? ` · ${statusFilter}` : ""}
+          {driverFilter ? ` · ${driverName(driverFilter)}` : ""}
+          {bankFilter ? ` · ${bankName(bankFilter)}` : ""}
         </p>
       </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 print:grid-cols-4">
+        <Kpi label="Pending payouts" value={pending.payoutAmt} sub={`${pending.payoutCount} items`} tone="warn" />
+        <Kpi label="Pending expenses" value={pending.expenseAmt} sub={`${pending.expenseCount} items`} tone="warn" />
+        <Kpi label="Pending receipts" value={pending.receiptAmt} sub={`${pending.receiptCount} items`} />
+        <Kpi label="Pending loans" value={pending.loanAmt} sub={`${pending.loanCount} items`} />
+      </div>
+
+      {kind === "statement" ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Kpi label="Opening (range)" value={statement.opening} />
+            <Kpi label="Cash in" value={statement.cashIn} tone="ok" />
+            <Kpi label="Cash out" value={statement.cashOut} tone="warn" />
+            <Kpi
+              label="Closing balance"
+              value={statement.closing}
+              tone={statement.closing >= 0 ? "ok" : "warn"}
+            />
+          </div>
+
+          <Card className="overflow-hidden p-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2">
+              <div>
+                <CardTitle className="text-sm">All transactions ({statement.count})</CardTitle>
+                <CardHint>
+                  Running balance after each cash row
+                  {bankFilter ? ` · ${bankName(bankFilter)}` : " · all banks"}
+                </CardHint>
+              </div>
+              <Badge tone="muted">{statement.count}</Badge>
+            </div>
+            {statement.rows.length === 0 ? (
+              <p className="px-3 py-8 text-center text-sm text-muted">No transactions in this range</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[780px] text-left text-sm">
+                  <thead className="border-b border-line bg-raised text-[12px] text-muted">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Date</th>
+                      <th className="px-3 py-2 font-medium">Type</th>
+                      <th className="px-3 py-2 font-medium">Party / detail</th>
+                      <th className="px-3 py-2 font-medium text-right">In</th>
+                      <th className="px-3 py-2 font-medium text-right">Out</th>
+                      <th className="px-3 py-2 font-medium text-right">Balance</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Bank</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {statement.rows.map((r) => (
+                      <tr key={r.id} className={cn(r.status === "pending" && "bg-amber-50/60")}>
+                        <td className="px-3 py-2 whitespace-nowrap text-muted">{shortDate(r.date)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{r.type}</td>
+                        <td className="px-3 py-2 max-w-[12rem]">
+                          <div className="truncate font-medium text-ink">{r.party}</div>
+                          <div className="truncate text-[12px] text-muted">{r.detail}</div>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
+                          {r.dir === "in" ? inr(r.amount) : ""}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-amber-800">
+                          {r.dir === "out" ? inr(r.amount) : ""}
+                        </td>
+                        <td
+                          className={cn(
+                            "px-3 py-2 text-right tabular-nums font-medium",
+                            r.balAfter != null && r.balAfter < 0 && "text-danger",
+                          )}
+                        >
+                          {r.balAfter != null ? inr(r.balAfter) : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium",
+                              r.status === "paid" && "bg-emerald-50 text-emerald-800",
+                              r.status === "pending" && "bg-amber-50 text-amber-800",
+                              r.status === "failed" && "bg-red-50 text-red-800",
+                            )}
+                          >
+                            {r.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-muted whitespace-nowrap">{r.bank}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </div>
+      ) : null}
 
       {kind === "summary" ? (
         <div className="space-y-4">
@@ -422,8 +876,17 @@ function ReportsPage() {
                 <tbody className="divide-y divide-line">
                   {summary.driverRows.map((r) => (
                     <tr key={r.driver.id}>
-                      <td className="px-3 py-2 font-medium text-ink">{r.driver.name}</td>
-                      <td className={cn("px-3 py-2 text-right tabular-nums", r.balance < 0 && "text-amber-700")}>{inr(r.balance)}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-ink">{r.driver.name}</div>
+                      </td>
+                      <td
+                        className={cn(
+                          "px-3 py-2 text-right tabular-nums font-medium",
+                          r.balance < 0 && "text-amber-700",
+                        )}
+                      >
+                        {inr(r.balance)}
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">{inr(r.advances)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{inr(r.salary)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{inr(r.extra)}</td>
@@ -439,15 +902,41 @@ function ReportsPage() {
       ) : null}
 
       {kind === "expenses" ? (
-        <ReportTable title={`Expenses (${filtered.exp.length})`} total={filtered.exp.reduce((s, e) => s + e.amount, 0)} empty="No expenses in this range"
-          headers={["Date", "Category", "Vendor", "Amount", "Mode", "Bank", "Note"]}
-          rows={filtered.exp.map((e) => [shortDate(e.date), e.category || "—", e.vendor || "—", inr(e.amount), e.mode, bankName(e.bankAccountId), e.note || ""])} />
+        <ReportTable
+          title={`Expenses (${filtered.exp.length})`}
+          total={filtered.exp.reduce((s, e) => s + e.amount, 0)}
+          empty="No expenses in this range"
+          headers={["Date", "Category", "Vendor", "Amount", "Mode", "Status", "Bank", "Note"]}
+          rows={filtered.exp.map((e) => [
+            shortDate(e.date),
+            e.category,
+            e.vendor || "—",
+            inr(e.amount),
+            e.mode,
+            e.status,
+            bankName(e.bankAccountId),
+            e.note || "",
+          ])}
+        />
       ) : null}
 
       {kind === "payouts" ? (
-        <ReportTable title={`Payouts (${filtered.pay.length})`} total={filtered.pay.reduce((s, p) => s + p.amount, 0)} empty="No payouts in this range"
-          headers={["Date", "Driver", "Kind", "Amount", "Status", "Mode", "Bank", "Note"]}
-          rows={filtered.pay.map((p) => [shortDate(p.date), driverName(p.driverId), KIND_LABEL[p.kind] || p.kind, inr(p.amount), p.status, p.mode, bankName(p.bankAccountId), p.note || ""])} />
+        <ReportTable
+          title={`Payouts (${filtered.pay.length})`}
+          total={filtered.pay.reduce((s, p) => s + p.amount, 0)}
+          empty="No payouts in this range"
+          headers={["Date", "Driver", "Kind", "Amount", "Mode", "Status", "Bank", "Note"]}
+          rows={filtered.pay.map((p) => [
+            shortDate(p.date),
+            driverName(p.driverId),
+            KIND_LABEL[p.kind] || p.kind,
+            inr(p.amount),
+            p.mode,
+            p.status,
+            bankName(p.bankAccountId),
+            p.note || "",
+          ])}
+        />
       ) : null}
 
       {kind === "drivers" ? (
@@ -477,7 +966,14 @@ function ReportsPage() {
                       <div className="font-medium text-ink">{r.driver.name}</div>
                       {r.driver.mobile ? <div className="text-[12px] text-muted">{r.driver.mobile}</div> : null}
                     </td>
-                    <td className={cn("px-3 py-2 text-right tabular-nums font-medium", r.balance < 0 && "text-amber-700")}>{inr(r.balance)}</td>
+                    <td
+                      className={cn(
+                        "px-3 py-2 text-right tabular-nums font-medium",
+                        r.balance < 0 && "text-amber-700",
+                      )}
+                    >
+                      {inr(r.balance)}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums">{inr(r.advances)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{inr(r.salary)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{inr(r.extra)}</td>
@@ -493,43 +989,102 @@ function ReportsPage() {
       ) : null}
 
       {kind === "receipts" ? (
-        <ReportTable title={`Receipts (${filtered.rec.length})`} total={filtered.rec.reduce((s, r) => s + r.amount, 0)} empty="No receipts in this range"
+        <ReportTable
+          title={`Receipts (${filtered.rec.length})`}
+          total={filtered.rec.reduce((s, r) => s + r.amount, 0)}
+          empty="No receipts in this range"
           headers={["Date", "Customer", "Amount", "Mode", "Status", "Bank", "Note"]}
-          rows={filtered.rec.map((r) => [shortDate(r.date), r.customerName || "—", inr(r.amount), r.mode, r.status, bankName(r.bankAccountId), r.note || ""])} />
+          rows={filtered.rec.map((r) => [
+            shortDate(r.date),
+            r.customerName || "—",
+            inr(r.amount),
+            r.mode,
+            r.status,
+            bankName(r.bankAccountId),
+            r.note || "",
+          ])}
+        />
       ) : null}
 
       {kind === "loans" ? (
-        <ReportTable title={`Loan payments (${filtered.lp.length})`} total={filtered.lp.reduce((s, p) => s + p.amount, 0)} empty="No loan payments in this range"
+        <ReportTable
+          title={`Loan payments (${filtered.lp.length})`}
+          total={filtered.lp.reduce((s, p) => s + p.amount, 0)}
+          empty="No loan payments in this range"
           headers={["Date", "Loan", "Kind", "Amount", "Status", "Mode", "Bank", "Note"]}
-          rows={filtered.lp.map((p) => [shortDate(p.date), loanName(p.loanId), KIND_LABEL[p.kind] || p.kind, inr(p.amount), p.status, p.mode, bankName(p.bankAccountId), p.note || ""])} />
+          rows={filtered.lp.map((p) => [
+            shortDate(p.date),
+            loanName(p.loanId),
+            KIND_LABEL[p.kind] || p.kind,
+            inr(p.amount),
+            p.status,
+            p.mode,
+            bankName(p.bankAccountId),
+            p.note || "",
+          ])}
+        />
       ) : null}
 
       {kind === "bank" ? (
-        <ReportTable title={`Transfers (${filtered.xfer.length})`} total={filtered.xfer.reduce((s, t) => s + t.amount, 0)} empty="No transfers in this range"
+        <ReportTable
+          title={`Transfers (${filtered.xfer.length})`}
+          total={filtered.xfer.reduce((s, t) => s + t.amount, 0)}
+          empty="No transfers in this range"
           headers={["Date", "From", "To", "Amount", "Note"]}
-          rows={filtered.xfer.map((t) => [shortDate(t.date), bankName(t.fromBankId), bankName(t.toBankId), inr(t.amount), t.note || ""])} />
+          rows={filtered.xfer.map((t) => [
+            shortDate(t.date),
+            bankName(t.fromBankId),
+            bankName(t.toBankId),
+            inr(t.amount),
+            t.note || "",
+          ])}
+        />
       ) : null}
-
-      <p className="print:hidden text-center text-[12px] text-subtle">
-        <FileSpreadsheet className="mr-1 inline size-3.5" />
-        Export CSV or print any report. Charts stay on Home / Analysis.
-      </p>
     </div>
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: number; tone?: "ok" | "warn" }) {
+function Kpi({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: number;
+  sub?: string;
+  tone?: "ok" | "warn";
+}) {
   return (
     <Card className="p-3">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-muted">{label}</div>
-      <div className={cn("mt-1 text-lg font-semibold tabular-nums tracking-tight", tone === "ok" && "text-emerald-700", tone === "warn" && "text-amber-700", !tone && "text-ink")}>
+      <p className="text-[12px] text-muted">{label}</p>
+      <p
+        className={cn(
+          "mt-1 font-display text-lg font-medium tabular-nums",
+          tone === "ok" && "text-emerald-700",
+          tone === "warn" && "text-amber-800",
+        )}
+      >
         {inr(value)}
-      </div>
+      </p>
+      {sub ? <p className="mt-0.5 text-[11px] text-muted">{sub}</p> : null}
     </Card>
   );
 }
 
-function ReportTable({ title, total, empty, headers, rows }: { title: string; total: number; empty: string; headers: string[]; rows: string[][] }) {
+function ReportTable({
+  title,
+  total,
+  empty,
+  headers,
+  rows,
+}: {
+  title: string;
+  total: number;
+  empty: string;
+  headers: string[];
+  rows: string[][];
+}) {
   return (
     <Card className="overflow-hidden p-0">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2">
@@ -544,7 +1099,9 @@ function ReportTable({ title, total, empty, headers, rows }: { title: string; to
             <thead className="border-b border-line bg-raised text-[12px] text-muted">
               <tr>
                 {headers.map((h) => (
-                  <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -552,7 +1109,14 @@ function ReportTable({ title, total, empty, headers, rows }: { title: string; to
               {rows.map((row, i) => (
                 <tr key={i}>
                   {row.map((cell, j) => (
-                    <td key={j} className={cn("px-3 py-2 max-w-[14rem] truncate", j === 0 ? "whitespace-nowrap text-muted" : "text-ink", headers[j]?.toLowerCase() === "amount" && "text-right tabular-nums font-medium")}>
+                    <td
+                      key={j}
+                      className={cn(
+                        "px-3 py-2 max-w-[14rem] truncate",
+                        j === 0 ? "whitespace-nowrap text-muted" : "text-ink",
+                        headers[j]?.toLowerCase() === "amount" && "text-right tabular-nums font-medium",
+                      )}
+                    >
                       {cell}
                     </td>
                   ))}
